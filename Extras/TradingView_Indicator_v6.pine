@@ -1,0 +1,268 @@
+// This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © YourTradingBot - INDICATOR VERSION (No Strategy)
+
+//@version=6
+indicator("Trading Bot Signals (Indicator)", overlay=true)
+
+// ============================================================================
+// INPUT PARAMETERS
+// ============================================================================
+
+// Signal Thresholds
+rsiBullishThreshold = input.int(60, "RSI Bullish Threshold", minval=50, maxval=70, group="Signal Settings")
+rsiBearishThreshold = input.int(40, "RSI Bearish Threshold", minval=30, maxval=50, group="Signal Settings")
+volumeMultiplier = input.float(1.2, "Volume Multiplier", minval=1.0, maxval=3.0, step=0.1, group="Signal Settings")
+
+// Indicator Lengths
+ema50Length = input.int(50, "EMA Length (60min)", minval=20, maxval=200, group="Indicator Settings")
+rsiLength = input.int(14, "RSI Length", minval=5, maxval=30, group="Indicator Settings")
+
+// Stop Loss Settings
+slBuffer = input.int(2, "SL Buffer Points", minval=1, maxval=10, group="Stop Loss")
+showSLLevels = input.bool(true, "Show SL Levels", group="Stop Loss")
+
+// Display Options
+showSignals = input.bool(true, "Show Buy/Sell Signals", group="Display")
+showEMA = input.bool(true, "Show EMA (Trend)", group="Display")
+showVWAP = input.bool(true, "Show VWAP", group="Display")
+showInfoPanel = input.bool(true, "Show Info Panel", group="Display")
+showBackgroundColor = input.bool(false, "Show Background Colors", group="Display")
+
+// ============================================================================
+// TECHNICAL INDICATORS
+// ============================================================================
+
+// === 60-MINUTE TREND (EMA 50) ===
+// Request 60min data for trend
+ema50_value = request.security(syminfo.tickerid, "60", ta.ema(close, ema50Length), lookahead=barmerge.lookahead_off)
+
+// === VWAP ===
+vwap_value = ta.vwap(hlc3)
+
+// === RSI ===
+rsi = ta.rsi(close, rsiLength)
+
+// === VOLUME ===
+volAvg = ta.sma(volume, 20)
+
+// ============================================================================
+// SIGNAL LOGIC
+// ============================================================================
+
+// Volume Confirmation
+volumeConfirmed = volume >= (volAvg * volumeMultiplier)
+
+// BULLISH SIGNAL (CALL)
+bullishTrend = close > ema50_value
+bullishTrigger = close > vwap_value
+bullishMomentum = rsi > rsiBullishThreshold
+
+bullishSignal = bullishTrend and bullishTrigger and bullishMomentum and volumeConfirmed
+
+// BEARISH SIGNAL (PUT)
+bearishTrend = close < ema50_value
+bearishTrigger = close < vwap_value
+bearishMomentum = rsi < rsiBearishThreshold
+
+bearishSignal = bearishTrend and bearishTrigger and bearishMomentum and volumeConfirmed
+
+// ============================================================================
+// DYNAMIC STOP LOSS CALCULATION
+// ============================================================================
+
+// Calculate SL levels for current bar
+calcSL_Long = ta.lowest(low[1], 2) - slBuffer
+calcSL_Short = ta.highest(high[1], 2) + slBuffer
+
+// Adjust if too close
+sl_Long = (close - calcSL_Long) < 5 ? close - 10 : calcSL_Long
+sl_Short = (calcSL_Short - close) < 5 ? close + 10 : calcSL_Short
+
+// Store SL on signal
+var float lastBullishSL = na
+var float lastBearishSL = na
+
+if bullishSignal
+    lastBullishSL := sl_Long
+
+if bearishSignal
+    lastBearishSL := sl_Short
+
+// ============================================================================
+// VISUAL ELEMENTS
+// ============================================================================
+
+// Plot EMA (Trend Line)
+plot(showEMA ? ema50_value : na, "EMA 50 (60min)", color=color.new(color.orange, 0), linewidth=2)
+
+// Plot VWAP
+plot(showVWAP ? vwap_value : na, "VWAP", color=color.new(color.blue, 20), linewidth=2, style=plot.style_line)
+
+// Plot Buy/Sell Signals
+plotshape(showSignals and bullishSignal, "BUY (CALL)", shape.labelup, location.belowbar, 
+         color=color.new(color.green, 0), text="CALL", textcolor=color.white, size=size.normal)
+         
+plotshape(showSignals and bearishSignal, "SELL (PUT)", shape.labeldown, location.abovebar, 
+         color=color.new(color.red, 0), text="PUT", textcolor=color.white, size=size.normal)
+
+// Plot Stop Loss Levels
+plot(showSLLevels and bullishSignal ? sl_Long : na, "Long SL", color=color.new(color.red, 0), 
+     linewidth=2, style=plot.style_cross, offset=1)
+     
+plot(showSLLevels and bearishSignal ? sl_Short : na, "Short SL", color=color.new(color.red, 0), 
+     linewidth=2, style=plot.style_cross, offset=1)
+
+// Background Colors for Signal Zones
+bgcolor(showBackgroundColor and bullishTrend and bullishTrigger and bullishMomentum ? color.new(color.green, 95) : na, title="Bullish Zone")
+bgcolor(showBackgroundColor and bearishTrend and bearishTrigger and bearishMomentum ? color.new(color.red, 95) : na, title="Bearish Zone")
+
+// ============================================================================
+// INFORMATION PANEL
+// ============================================================================
+
+if showInfoPanel
+    var table infoTable = table.new(position.top_right, 2, 7, 
+                                     bgcolor=color.new(#000000, 85), 
+                                     border_width=2, 
+                                     border_color=color.new(#555555, 50))
+    
+    if barstate.islast
+        // Header
+        table.cell(infoTable, 0, 0, "Signal Dashboard", text_color=color.white, 
+                  bgcolor=color.new(#1E88E5, 70), text_size=size.normal)
+        table.cell(infoTable, 1, 0, "", bgcolor=color.new(#1E88E5, 70))
+        
+        // RSI Value
+        rsiColor = rsi > rsiBullishThreshold ? color.new(color.lime, 0) : 
+                   rsi < rsiBearishThreshold ? color.new(color.red, 0) : color.new(color.gray, 0)
+        table.cell(infoTable, 0, 1, "RSI (" + str.tostring(rsiLength) + ")", 
+                  text_color=color.new(color.white, 0), text_size=size.small)
+        table.cell(infoTable, 1, 1, str.tostring(rsi, "#.#"), 
+                  text_color=rsiColor, text_size=size.normal)
+        
+        // Volume Ratio
+        volRatio = volAvg > 0 ? volume / volAvg : 1.0
+        volColor = volRatio >= volumeMultiplier ? color.new(color.lime, 0) : color.new(color.gray, 0)
+        table.cell(infoTable, 0, 2, "Vol/Avg", 
+                  text_color=color.new(color.white, 0), text_size=size.small)
+        table.cell(infoTable, 1, 2, str.tostring(volRatio, "#.##") + "x", 
+                  text_color=volColor, text_size=size.normal)
+        
+        // Trend (EMA)
+        trendStatus = close > ema50_value ? "BULL ↑" : close < ema50_value ? "BEAR ↓" : "NEUTRAL →"
+        trendColor = close > ema50_value ? color.new(color.lime, 0) : 
+                     close < ema50_value ? color.new(color.red, 0) : color.new(color.gray, 0)
+        table.cell(infoTable, 0, 3, "Trend (60m)", 
+                  text_color=color.new(color.white, 0), text_size=size.small)
+        table.cell(infoTable, 1, 3, trendStatus, 
+                  text_color=trendColor, text_size=size.normal)
+        
+        // VWAP Position
+        vwapStatus = close > vwap_value ? "ABOVE ↑" : "BELOW ↓"
+        vwapColor = close > vwap_value ? color.new(color.lime, 0) : color.new(color.red, 0)
+        table.cell(infoTable, 0, 4, "VWAP", 
+                  text_color=color.new(color.white, 0), text_size=size.small)
+        table.cell(infoTable, 1, 4, vwapStatus, 
+                  text_color=vwapColor, text_size=size.normal)
+        
+        // Volume Confirmation
+        volConfText = volumeConfirmed ? "✓ YES" : "✗ NO"
+        volConfColor = volumeConfirmed ? color.new(color.lime, 0) : color.new(color.orange, 0)
+        table.cell(infoTable, 0, 5, "Vol Confirm", 
+                  text_color=color.new(color.white, 0), text_size=size.small)
+        table.cell(infoTable, 1, 5, volConfText, 
+                  text_color=volConfColor, text_size=size.normal)
+        
+        // Signal Status
+        signalText = bullishSignal ? "🚀 CALL" : bearishSignal ? "🔻 PUT" : "⏸ NONE"
+        signalColor = bullishSignal ? color.new(color.lime, 0) : 
+                      bearishSignal ? color.new(color.red, 0) : color.new(color.gray, 0)
+        table.cell(infoTable, 0, 6, "Signal", 
+                  text_color=color.new(color.white, 0), text_size=size.small, 
+                  bgcolor=signalColor)
+        table.cell(infoTable, 1, 6, signalText, 
+                  text_color=color.white, text_size=size.normal, 
+                  bgcolor=signalColor)
+
+// ============================================================================
+// RSI PANEL (Bottom)
+// ============================================================================
+
+// Separate RSI indicator panel
+hline(rsiBullishThreshold, "Bullish Threshold", color=color.new(color.green, 50), linestyle=hline.style_dotted)
+hline(50, "Midline", color=color.new(color.gray, 70), linestyle=hline.style_dotted)
+hline(rsiBearishThreshold, "Bearish Threshold", color=color.new(color.red, 50), linestyle=hline.style_dotted)
+
+// ============================================================================
+// ALERTS
+// ============================================================================
+
+alertcondition(bullishSignal, "Bullish CALL Signal", "🚀 CALL Entry Signal!\nRSI: {{rsi}}\nPrice: {{close}}")
+alertcondition(bearishSignal, "Bearish PUT Signal", "🔻 PUT Entry Signal!\nRSI: {{rsi}}\nPrice: {{close}}")
+
+// Combined alert for any signal
+alertcondition(bullishSignal or bearishSignal, "Any Signal", 
+              "⚡ Trading Signal Generated!\nType: {{bullishSignal ? 'CALL' : 'PUT'}}\nPrice: {{close}}\nRSI: {{rsi}}")
+
+// ============================================================================
+// NOTES & INSTRUCTIONS
+// ============================================================================
+// 
+// HOW TO USE:
+// ===========
+// 1. Apply this indicator to your chart
+// 2. Recommended timeframe: 15-minute or lower
+// 3. Works on: Futures, Commodities (Crude Oil, Natural Gas, Gold, Silver), Indices (Nifty, BankNifty)
+// 
+// SIGNAL CONDITIONS:
+// ==================
+// 
+// BULLISH (CALL) Signal:
+// ✓ Price > EMA50 (60min) - Uptrend confirmation
+// ✓ Price > VWAP - Above value area
+// ✓ RSI > 60 - Strong momentum
+// ✓ Volume > 1.2x Average - Volume confirmation
+// 
+// BEARISH (PUT) Signal:
+// ✓ Price < EMA50 (60min) - Downtrend confirmation
+// ✓ Price < VWAP - Below value area
+// ✓ RSI < 40 - Weak momentum
+// ✓ Volume > 1.2x Average - Volume confirmation
+// 
+// STOP LOSS:
+// ==========
+// - Calculated based on swing high/low of previous 2 bars
+// - Buffer of 2 points added for safety
+// - Minimum 5 points from entry to avoid too-tight stops
+// 
+// RISK MANAGEMENT:
+// ================
+// - Use with proper position sizing
+// - Recommended: 2% risk per trade
+// - Trail stops using step ladder:
+//   * 1:2 RR → Lock 1R profit
+//   * 1:3 RR → Lock 2R profit  
+//   * 1:4 RR → Lock 3R profit
+//   * 1:5 RR → Full exit (Jackpot)
+// 
+// ALERTS:
+// =======
+// 1. Click "Add Alert" button
+// 2. Condition: Select "Bullish CALL Signal" or "Bearish PUT Signal"
+// 3. Or use "Any Signal" to catch both
+// 4. Set alert frequency to "Once Per Bar Close"
+// 5. Connect to your trading app/bot via webhook
+// 
+// CUSTOMIZATION:
+// ==============
+// - Adjust RSI thresholds for different markets
+// - Change volume multiplier based on instrument liquidity
+// - Modify EMA length for different trend sensitivities
+// - Toggle background colors for visual aid
+// 
+// BACKTESTING:
+// ============
+// - Use "TradingView_Strategy_v6.pine" for backtesting with strategy tester
+// - This indicator version is for live signal monitoring only
+// 
+// ============================================================================

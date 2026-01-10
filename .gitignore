@@ -1,0 +1,30 @@
+# Credentials - NEVER COMMIT
+credentials.json
+trading_config.json
+
+# State files
+trade_state_active.json
+trade_state_active.json.bak
+daily_pnl_combined.json
+trade_history_combined.json
+bot.log
+websocket_status.json
+contract_cache.json
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+venv/
+.env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db

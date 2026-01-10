@@ -1,0 +1,23 @@
+{
+    "_comment": "Trading Bot Configuration - Copy to trading_config.json and customize",
+    
+    "// Risk Management": "===========================================",
+    "MAX_DAILY_LOSS": 5000,
+    "MAX_TRADES_PER_DAY": 5,
+    "COOLDOWN_AFTER_LOSS": 300,
+    "SIGNAL_COOLDOWN": 900,
+    "AUTO_SQUARE_OFF_BUFFER": 5,
+    
+    "// Signal Thresholds": "===========================================",
+    "RSI_BULLISH_THRESHOLD": 60,
+    "RSI_BEARISH_THRESHOLD": 40,
+    "VOLUME_MULTIPLIER": 1.2,
+    
+    "// Order Execution": "===========================================",
+    "LIMIT_ORDER_BUFFER": 0.01,
+    
+    "// State Files": "===========================================",
+    "STATE_FILE": "trade_state_active.json",
+    "DAILY_PNL_FILE": "daily_pnl_combined.json",
+    "TRADE_HISTORY_FILE": "trade_history_combined.json"
+}
