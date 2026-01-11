@@ -145,20 +145,15 @@ class TestMarketHours:
     @patch('utils.datetime')
     def test_market_open_during_hours(self, mock_datetime):
         """Market should be open during trading hours on weekday"""
-        mock_datetime.now.return_value = datetime(2026, 1, 12, 10, 30)  # Monday 10:30
-        mock_datetime.now.return_value.weekday.return_value = 0  # Monday
-        mock_datetime.now.return_value.strftime = lambda x: "10:30"
+        # Create a mock now object
+        mock_now = MagicMock()
+        mock_now.weekday.return_value = 0  # Monday
+        mock_now.strftime.return_value = "10:30"
+        mock_datetime.now.return_value = mock_now
         
-        # Manually patch
-        with patch('utils.datetime') as mock_dt:
-            mock_now = MagicMock()
-            mock_now.weekday.return_value = 0  # Monday
-            mock_now.strftime.return_value = "10:30"
-            mock_dt.now.return_value = mock_now
-            
-            is_open, msg = is_market_open("09:00", "15:30")
-            assert is_open == True
-            assert "Open" in msg
+        is_open, msg = is_market_open("09:00", "15:30")
+        assert is_open == True
+        assert "Open" in msg
     
     @patch('utils.datetime')
     def test_market_closed_weekend(self, mock_datetime):

@@ -42,7 +42,7 @@ def get_all_instrument_subscriptions(active_instrument: str) -> List[Tuple[int, 
 
 def on_ticks(instance: Any, ticks: Dict[str, Any], active_instrument: str, active_trade: Dict[str, Any]) -> None:
     """Handle incoming tick data"""
-    global LATEST_LTP, OPTION_LTP, LAST_TICK_TIME, LAST_OPTION_TICK_TIME, INSTRUMENT_LTP
+    global LATEST_LTP, OPTION_LTP, LAST_TICK_TIME, LAST_OPTION_TICK_TIME
     
     if 'LTP' in ticks:
         security_id = str(ticks.get('security_id', ''))
@@ -95,7 +95,6 @@ def unsubscribe_option(feed: Any, option_id: str, exchange_segment_int: int) -> 
 
 def socket_heartbeat_monitor() -> None:
     """Separate thread to monitor socket health and trigger reconnection"""
-    global SOCKET_HEALTHY
     
     logging.info(">>> Heartbeat Monitor Started")
     
@@ -119,7 +118,7 @@ def socket_heartbeat_monitor() -> None:
 
 def start_socket(client_id: str, access_token: str, active_instrument: str, active_trade: Dict[str, Any]) -> None:
     """Start WebSocket connection for market data"""
-    global MARKET_FEED, LAST_TICK_TIME
+    global MARKET_FEED
     
     logging.info(">>> Socket Connecting...")
     loop = asyncio.new_event_loop()
