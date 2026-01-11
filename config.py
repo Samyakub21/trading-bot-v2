@@ -184,5 +184,10 @@ class Config:
         return self._trading_config["TRADE_HISTORY_FILE"]
 
 
+# Networking / heartbeat
+HEARTBEAT_TIMEOUT_SECONDS = 30
+RECONNECT_DELAY_SECONDS = 5
+MIN_TICK_INTERVAL_MS = 100
+
 # Create a singleton instance
 config = Config()

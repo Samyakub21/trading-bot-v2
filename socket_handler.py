@@ -11,6 +11,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from dhanhq import marketfeed
 
 from instruments import INSTRUMENTS, MULTI_SCAN_ENABLED, get_instruments_to_scan
+from config import config
 
 # =============================================================================
 # GLOBAL SOCKET STATE
@@ -100,7 +101,7 @@ def socket_heartbeat_monitor() -> None:
     
     while not SHUTDOWN_EVENT.is_set():
         # Wait for either socket health signal or timeout
-        socket_ok = SOCKET_HEALTHY.wait(timeout=30)
+        socket_ok = SOCKET_HEALTHY.wait(timeout=config.HEARTBEAT_TIMEOUT_SECONDS)
         
         if SHUTDOWN_EVENT.is_set():
             break
@@ -148,7 +149,7 @@ def start_socket(client_id: str, access_token: str, active_instrument: str, acti
                 except Exception as e:
                     logging.debug(f"Error closing connection: {e}")
                 
-                time.sleep(2)
+                time.sleep(config.RECONNECT_DELAY_SECONDS)
                 instruments = get_all_instrument_subscriptions(active_instrument)
                 MARKET_FEED = marketfeed.DhanFeed(client_id, access_token, instruments, version)
                 SOCKET_RECONNECT_EVENT.clear()
@@ -215,3 +216,8 @@ def shutdown_socket() -> None:
 def is_shutdown() -> bool:
     """Check if shutdown is requested"""
     return SHUTDOWN_EVENT.is_set()
+
+
+def should_process_tick(now_ms: int) -> bool:
+    """Check if the tick should be processed based on the time interval"""
+    return (now_ms - LAST_TICK_TIME_MS) >= config.MIN_TICK_INTERVAL_MS
