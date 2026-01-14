@@ -33,7 +33,16 @@ DEFAULT_TRADING_CONFIG = {
     # Order Execution
     "LIMIT_ORDER_BUFFER": 0.01,       # 1% buffer for limit orders
     
-    # State Files (stored in data/ directory)
+    # Database Configuration
+    "USE_DATABASE": True,             # Use SQLite database instead of JSON files
+    "DATABASE_PATH": str(DATA_DIR / "trading_bot.db"),  # SQLite database file path
+    
+    # Poll Fallback Configuration
+    "POLL_FALLBACK_ENABLED": True,    # Enable REST API fallback for stale data
+    "POLL_FALLBACK_THRESHOLD": 5,     # Seconds before triggering REST fallback
+    "POLL_COOLDOWN": 2,               # Minimum seconds between REST polls
+    
+    # State Files (fallback when database is disabled)
     "STATE_FILE": str(DATA_DIR / "trade_state_active.json"),
     "DAILY_PNL_FILE": str(DATA_DIR / "daily_pnl_combined.json"),
     "TRADE_HISTORY_FILE": str(DATA_DIR / "trade_history_combined.json"),
@@ -186,6 +195,28 @@ class Config:
     @property
     def TRADE_HISTORY_FILE(self) -> str:
         return self._trading_config["TRADE_HISTORY_FILE"]
+    
+    # --- Database Configuration ---
+    @property
+    def USE_DATABASE(self) -> bool:
+        return self._trading_config.get("USE_DATABASE", True)
+    
+    @property
+    def DATABASE_PATH(self) -> str:
+        return self._trading_config.get("DATABASE_PATH", str(DATA_DIR / "trading_bot.db"))
+    
+    # --- Poll Fallback Configuration ---
+    @property
+    def POLL_FALLBACK_ENABLED(self) -> bool:
+        return self._trading_config.get("POLL_FALLBACK_ENABLED", True)
+    
+    @property
+    def POLL_FALLBACK_THRESHOLD(self) -> int:
+        return self._trading_config.get("POLL_FALLBACK_THRESHOLD", 5)
+    
+    @property
+    def POLL_COOLDOWN(self) -> int:
+        return self._trading_config.get("POLL_COOLDOWN", 2)
     
     # --- Socket/Network Configuration ---
     @property

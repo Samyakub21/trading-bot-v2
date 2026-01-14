@@ -6,7 +6,7 @@ import logging
 import time
 import threading
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 from dhanhq import dhanhq
 
 from config import config
@@ -25,6 +25,137 @@ CLIENT_ID = config.CLIENT_ID
 ACCESS_TOKEN = config.ACCESS_TOKEN
 # Initialize Dhan client (dhanhq v2.0)
 dhan = dhanhq(CLIENT_ID, ACCESS_TOKEN)
+
+# =============================================================================
+# POLL FALLBACK CONFIGURATION
+# =============================================================================
+POLL_FALLBACK_ENABLED = config.get_trading_param('POLL_FALLBACK_ENABLED', True)
+POLL_FALLBACK_THRESHOLD_SECONDS = config.get_trading_param('POLL_FALLBACK_THRESHOLD', 5)
+_last_poll_time: datetime = datetime.now()
+_poll_cooldown_seconds = config.get_trading_param('POLL_COOLDOWN', 2)
+
+
+def _get_ltp_via_rest(
+    security_id: str,
+    exchange_segment_str: str
+) -> Optional[float]:
+    """
+    Fallback: Get LTP via REST API when WebSocket data is stale.
+    
+    Uses dhan.quote_data() to fetch current price directly.
+    
+    Args:
+        security_id: The security ID to fetch price for
+        exchange_segment_str: Exchange segment (e.g., 'MCX_COMM', 'NSE_FNO')
+        
+    Returns:
+        Current LTP or None if fetch fails
+    """
+    global _last_poll_time
+    
+    # Rate limit REST polls
+    if (datetime.now() - _last_poll_time).total_seconds() < _poll_cooldown_seconds:
+        return None
+    
+    try:
+        # Map exchange segment to quote format
+        quote_segment = exchange_segment_str.replace('_COMM', '')  # MCX_COMM -> MCX
+        if quote_segment == 'NSE_FNO':
+            quote_segment = 'NSE_FNO'
+        elif quote_segment == 'MCX':
+            quote_segment = 'MCX_COMM'  # Quote API uses MCX_COMM
+        
+        quote_response = dhan.quote_data({quote_segment: [int(security_id)]})
+        _last_poll_time = datetime.now()
+        
+        if quote_response.get('status') == 'success':
+            quote_data = quote_response.get('data', {}).get('data', {})
+            security_quote = quote_data.get(str(security_id), quote_data.get(int(security_id), {}))
+            
+            if security_quote and 'last_price' in security_quote:
+                ltp = float(security_quote['last_price'])
+                logging.debug(f"📡 REST Poll: {security_id} LTP = {ltp}")
+                return ltp
+            elif security_quote and 'ltp' in security_quote:
+                ltp = float(security_quote['ltp'])
+                logging.debug(f"📡 REST Poll: {security_id} LTP = {ltp}")
+                return ltp
+        
+        logging.debug(f"REST quote_data response: {quote_response}")
+        return None
+        
+    except Exception as e:
+        logging.warning(f"REST poll failed for {security_id}: {e}")
+        return None
+
+
+def get_ltp_with_fallback(
+    active_trade: Dict[str, Any],
+    active_instrument: str
+) -> Tuple[float, float, bool]:
+    """
+    Get LTP values with REST API fallback when WebSocket data is stale.
+    
+    This is the critical poll fallback mechanism to ensure SL triggers
+    even when WebSocket hangs without disconnecting.
+    
+    Args:
+        active_trade: Active trade dictionary
+        active_instrument: Current trading instrument
+        
+    Returns:
+        Tuple of (future_ltp, option_ltp, used_fallback)
+    """
+    # Get WebSocket values
+    latest_ltp = socket_handler.get_latest_ltp()
+    option_ltp = socket_handler.get_option_ltp()
+    last_tick_time = socket_handler.get_last_tick_time()
+    last_option_tick_time = socket_handler.get_last_option_tick_time()
+    
+    used_fallback = False
+    
+    # Check if fallback is enabled
+    if not POLL_FALLBACK_ENABLED:
+        return latest_ltp, option_ltp, used_fallback
+    
+    # Check if we have an active trade
+    if not active_trade.get("status"):
+        return latest_ltp, option_ltp, used_fallback
+    
+    trade_instrument = active_trade.get("instrument", active_instrument)
+    trade_exchange_segment = active_trade.get("exchange_segment_str", INSTRUMENTS[trade_instrument]["exchange_segment_str"])
+    
+    # Check if future data is stale (> 5 seconds)
+    future_stale_seconds = (datetime.now() - last_tick_time).total_seconds()
+    if future_stale_seconds > POLL_FALLBACK_THRESHOLD_SECONDS:
+        logging.warning(f"⚠️ Future data stale ({future_stale_seconds:.1f}s), triggering REST fallback")
+        
+        # Get future LTP via REST
+        future_id = str(INSTRUMENTS[trade_instrument]["future_id"])
+        rest_ltp = _get_ltp_via_rest(future_id, trade_exchange_segment)
+        
+        if rest_ltp and rest_ltp > 0:
+            latest_ltp = rest_ltp
+            used_fallback = True
+            logging.info(f"📡 Using REST fallback for future: {latest_ltp}")
+    
+    # Check if option data is stale (> 5 seconds) when we have an active position
+    if option_ltp > 0:
+        option_stale_seconds = (datetime.now() - last_option_tick_time).total_seconds()
+        if option_stale_seconds > POLL_FALLBACK_THRESHOLD_SECONDS:
+            logging.warning(f"⚠️ Option data stale ({option_stale_seconds:.1f}s), triggering REST fallback")
+            
+            # Get option LTP via REST
+            option_id = active_trade.get("option_id")
+            if option_id:
+                rest_option_ltp = _get_ltp_via_rest(str(option_id), trade_exchange_segment)
+                
+                if rest_option_ltp and rest_option_ltp > 0:
+                    option_ltp = rest_option_ltp
+                    used_fallback = True
+                    logging.info(f"📡 Using REST fallback for option: {option_ltp}")
+    
+    return latest_ltp, option_ltp, used_fallback
 
 
 def close_trade(
@@ -132,19 +263,22 @@ def run_manager(active_trade: Dict[str, Any], active_instrument: str) -> None:
     logging.info(">>> Manager Started (Step Ladder Active)")
 
     while not socket_handler.is_shutdown():
-        # Get current LTP values
-        latest_ltp = socket_handler.get_latest_ltp()
-        option_ltp = socket_handler.get_option_ltp()
+        # Get current LTP values with REST API fallback for stale data
+        latest_ltp, option_ltp, used_fallback = get_ltp_with_fallback(active_trade, active_instrument)
         last_tick_time = socket_handler.get_last_tick_time()
         last_option_tick_time = socket_handler.get_last_option_tick_time()
         
-        # Check for data feed lag
+        # Log if fallback was used (only when there's an active trade)
+        if used_fallback and active_trade["status"]:
+            logging.info("📡 REST Poll Fallback activated for price verification")
+        
+        # Check for data feed lag (warning only - fallback handles SL)
         if (datetime.now() - last_tick_time).total_seconds() > 10 and active_trade["status"]:
-            logging.warning("⚠️ FUTURE DATA FEED LAG DETECTED - WATCH MANUALLY")
+            logging.warning("⚠️ FUTURE DATA FEED LAG DETECTED - REST fallback active")
         
         if active_trade["status"] and option_ltp > 0:
             if (datetime.now() - last_option_tick_time).total_seconds() > 10:
-                logging.warning("⚠️ OPTION DATA FEED LAG DETECTED")
+                logging.warning("⚠️ OPTION DATA FEED LAG DETECTED - REST fallback active")
 
         # === AUTO SQUARE-OFF CHECK ===
         if active_trade["status"]:
