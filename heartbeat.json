@@ -1,0 +1,13 @@
+{
+  "timestamp": "2026-01-14T21:08:26.098306",
+  "status": "stopped",
+  "active_trade": false,
+  "instrument": null,
+  "last_tick_time": null,
+  "scanner_cycle": 0,
+  "memory_mb": 0,
+  "threads_active": 0,
+  "error_count": 0,
+  "last_error": null,
+  "pid": 25328
+}

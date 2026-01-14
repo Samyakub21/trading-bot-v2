@@ -667,7 +667,7 @@ DASHBOARD_USERS = {
 }
 
 # File Paths - Updated to new combined naming scheme (matching Tradebot.py)
-DATA_DIR = Path(__file__).parent
+DATA_DIR = Path(__file__).parent / 'data'
 STATE_FILE = DATA_DIR / "trade_state_active.json"
 DAILY_PNL_FILE = DATA_DIR / "daily_pnl_combined.json"
 TRADE_HISTORY_FILE = DATA_DIR / "trade_history_combined.json"
@@ -2647,32 +2647,7 @@ def main():
         render_websocket_status()
         st.divider()
         
-        # Manual WebSocket status update form
-        with st.expander("🔧 Manual Status Update (Testing)", expanded=False):
-            st.warning("This is for testing purposes only.")
-            
-            with st.form("ws_status_form"):
-                ws_connected = st.checkbox("Connected", value=True)
-                ws_latency = st.number_input("Latency (ms)", min_value=0, value=50)
-                
-                if st.form_submit_button("Update Status"):
-                    test_status = {
-                        "connected": ws_connected,
-                        "last_message_time": datetime.now().isoformat(),
-                        "latency_ms": ws_latency,
-                        "messages_received": 1000,
-                        "errors": 0,
-                        "reconnect_count": 0,
-                        "subscribed_symbols": ["CRUDEOIL", "GOLD"],
-                        "last_prices": {
-                            "CRUDEOIL": {"ltp": 6500.50, "change_pct": 1.25, "volume": 15000},
-                            "GOLD": {"ltp": 72500.00, "change_pct": -0.35, "volume": 8000}
-                        }
-                    }
-                    with open(WEBSOCKET_STATUS_FILE, 'w') as f:
-                        json.dump(test_status, f, indent=2)
-                    st.success("Status updated!")
-                    st.rerun()
+        # Manual WebSocket status update form removed (testing cleanup)
     
     elif page == "📈 Metrics":
         render_prometheus_info()

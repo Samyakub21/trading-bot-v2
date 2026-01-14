@@ -8,6 +8,7 @@ import threading
 import asyncio
 import json
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 from dhanhq import marketfeed
 
@@ -15,30 +16,27 @@ from instruments import INSTRUMENTS, MULTI_SCAN_ENABLED, get_instruments_to_scan
 from config import config
 
 # =============================================================================
-# DHAN CREDENTIALS
+# CONFIGURATION & STATE
 # =============================================================================
 CLIENT_ID = config.CLIENT_ID
 ACCESS_TOKEN = config.ACCESS_TOKEN
+DATA_DIR = Path(__file__).parent / 'data'  # Force 'data' folder
 
-# =============================================================================
-# GLOBAL SOCKET STATE
-# =============================================================================
 MARKET_FEED = None
-LATEST_LTP = 0              # Future/Underlying LTP
-OPTION_LTP = 0              # Option Premium LTP
+LATEST_LTP = 0
+OPTION_LTP = 0
 LAST_TICK_TIME = datetime.now()
 LAST_OPTION_TICK_TIME = datetime.now()
-INSTRUMENT_LTP = {}         # {instrument_key: {"ltp": price, "last_update": datetime}}
-MESSAGE_COUNT = 0
+INSTRUMENT_LTP = {}
+MESSAGE_COUNT = 0  # Track total messages received
 
-# Socket events
+# Events
 SOCKET_RECONNECT_EVENT = threading.Event()
 SOCKET_HEALTHY = threading.Event()
 SHUTDOWN_EVENT = threading.Event()
 
-
 def get_all_instrument_subscriptions(active_instrument: str) -> List[Tuple[int, str, Any]]:
-    """Get subscription list for all instruments to scan in multi-instrument mode"""
+    """Get subscription list for all instruments"""
     subscriptions: List[Tuple[int, str, Any]] = []
     instruments_to_scan = get_instruments_to_scan() if MULTI_SCAN_ENABLED else [active_instrument]
     
@@ -48,21 +46,19 @@ def get_all_instrument_subscriptions(active_instrument: str) -> List[Tuple[int, 
     
     return subscriptions
 
-
 def on_ticks(instance: Any, ticks: Dict[str, Any], active_instrument: str, active_trade: Dict[str, Any]) -> None:
     """Handle incoming tick data"""
     global LATEST_LTP, OPTION_LTP, LAST_TICK_TIME, LAST_OPTION_TICK_TIME, MESSAGE_COUNT
     
+    # Increment counter for dashboard
     MESSAGE_COUNT += 1
-    
+
     if 'LTP' in ticks:
         security_id = str(ticks.get('security_id', ''))
         ltp = float(ticks['LTP'])
         
-        # Mark socket as healthy on any tick
         SOCKET_HEALTHY.set()
         
-        # Check if this tick is for the option or the future
         if active_trade.get("status") and security_id == str(active_trade.get("option_id")):
             OPTION_LTP = ltp
             LAST_OPTION_TICK_TIME = datetime.now()
@@ -70,192 +66,113 @@ def on_ticks(instance: Any, ticks: Dict[str, Any], active_instrument: str, activ
             LATEST_LTP = ltp
             LAST_TICK_TIME = datetime.now()
         else:
-            # Check if it's any of our monitored instrument futures
             for inst_key, inst in INSTRUMENTS.items():
                 if security_id == str(inst["future_id"]):
                     INSTRUMENT_LTP[inst_key] = {
                         "ltp": ltp,
                         "last_update": datetime.now()
                     }
-                    # Update main LTP if it's the active instrument
                     if inst_key == active_instrument:
                         LATEST_LTP = ltp
                         LAST_TICK_TIME = datetime.now()
                     break
 
-
-def subscribe_option(feed: Any, option_id: str, exchange_segment_int: int) -> None:
-    """Subscribe to option feed for premium tracking"""
+def write_socket_status():
+    """Write REAL-TIME status to JSON for dashboard"""
     try:
-        sub_instruments = [(exchange_segment_int, str(option_id), marketfeed.Ticker)]
-        feed.subscribe_symbols(sub_instruments)
-        logging.info(f"📊 Subscribed to option feed: {option_id}")
+        # Check if connected (Feed exists + Not shutting down)
+        connected = MARKET_FEED is not None and not SHUTDOWN_EVENT.is_set()
+        
+        status = {
+            "connected": connected,
+            "last_message_time": LAST_TICK_TIME.isoformat(),
+            "latency_ms": 0, # Placeholder
+            "messages_received": MESSAGE_COUNT,
+            "errors": 0,
+            "reconnect_count": 0,
+            "subscribed_symbols": list(INSTRUMENTS.keys()),
+            # Extract simple LTPs for dashboard display
+            "last_prices": {k: {"ltp": v.get("ltp", 0)} for k, v in INSTRUMENT_LTP.items()}
+        }
+        
+        # Ensure directory exists
+        DATA_DIR.mkdir(exist_ok=True)
+        
+        with open(DATA_DIR / "websocket_status.json", "w") as f:
+            json.dump(status, f)
+            
     except Exception as e:
-        logging.error(f"Failed to subscribe to option: {e}")
-
-
-def unsubscribe_option(feed: Any, option_id: str, exchange_segment_int: int) -> None:
-    """Unsubscribe from option feed"""
-    try:
-        unsub_instruments = [(exchange_segment_int, str(option_id), marketfeed.Ticker)]
-        feed.unsubscribe_symbols(unsub_instruments)
-        logging.info(f"📊 Unsubscribed from option feed: {option_id}")
-    except Exception as e:
-        logging.error(f"Failed to unsubscribe from option: {e}")
-
+        logging.error(f"Failed to write socket status: {e}")
 
 def socket_heartbeat_monitor() -> None:
-    """Separate thread to monitor socket health and trigger reconnection"""
-    
+    """Monitor health and update dashboard status file"""
     logging.info(">>> Heartbeat Monitor Started")
     
     while not SHUTDOWN_EVENT.is_set():
-        # Wait for either socket health signal or timeout
+        # Update the dashboard file every second
+        write_socket_status()
+
         socket_ok = SOCKET_HEALTHY.wait(timeout=config.HEARTBEAT_TIMEOUT_SECONDS)
         
         if SHUTDOWN_EVENT.is_set():
             break
         
         if not socket_ok:
-            # No tick received in 30 seconds
-            logging.warning("⚠️ HEARTBEAT FAILED - No tick data for 30s. Triggering reconnection...")
+            logging.warning("⚠️ HEARTBEAT FAILED - No tick data. Reconnecting...")
             SOCKET_RECONNECT_EVENT.set()
         else:
-            # Clear the flag for next cycle
             SOCKET_HEALTHY.clear()
         
-        time.sleep(1)  # Small delay between checks
-        
-        # Create status dict
-        status = {
-            "connected": not SHUTDOWN_EVENT.is_set() and MARKET_FEED is not None,
-            "last_message_time": LAST_TICK_TIME.isoformat(),
-            "latency_ms": 0, # Placeholder or calc
-            "messages_received": MESSAGE_COUNT,
-            "errors": 0,
-            "reconnect_count": 0,
-            "subscribed_symbols": list(INSTRUMENTS.keys()),
-            "last_prices": {k: {"ltp": v["ltp"]} for k, v in INSTRUMENT_LTP.items()}
-        }
-        try:
-            with open(config.DATA_DIR / "websocket_status.json", "w") as f:
-                json.dump(status, f)
-        except Exception as e:
-            logging.error(f"Failed to write status: {e}")
-
+        time.sleep(1)
 
 def start_socket(client_id: str, access_token: str, active_instrument: str, active_trade: Dict[str, Any]) -> None:
-    """Start WebSocket connection for market data"""
+    """Start WebSocket connection"""
     global MARKET_FEED
     
     logging.info(">>> Socket Connecting...")
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
 
-    # Subscribe to all instruments in multi-scan mode
     instruments = get_all_instrument_subscriptions(active_instrument)
-    version = "v2"
+    MARKET_FEED = marketfeed.DhanFeed(client_id, access_token, instruments, "v2")
     
-    logging.info(f"📡 Subscribing to {len(instruments)} instrument feed(s)")
-    for inst in instruments:
-        logging.debug(f"   -> Exchange: {inst[0]}, Security: {inst[1]}")
-    
-    # DhanFeed uses client_id, access_token (dhanhq v2.0)
-    MARKET_FEED = marketfeed.DhanFeed(CLIENT_ID, ACCESS_TOKEN, instruments, version)
-    
-    # Start heartbeat monitor in separate thread
+    # Start heartbeat monitor (which also writes status file)
     heartbeat_thread = threading.Thread(target=socket_heartbeat_monitor, daemon=True)
     heartbeat_thread.start()
     
-    # Exponential backoff variables
     retry_delay = 2
-    max_delay = 60
     
     while not SHUTDOWN_EVENT.is_set():
         try:
-            # Check if reconnection is requested
             if SOCKET_RECONNECT_EVENT.is_set():
                 logging.info("🔄 Reconnecting socket...")
-                try:
-                    MARKET_FEED.close_connection()
-                except Exception as e:
-                    logging.debug(f"Error closing connection: {e}")
-                
-                logging.info(f"Retrying in {retry_delay} seconds...")
+                try: MARKET_FEED.close_connection()
+                except: pass
                 time.sleep(retry_delay)
-                retry_delay = min(retry_delay * 2, max_delay)  # Double the wait time
-                
-                instruments = get_all_instrument_subscriptions(active_instrument)
-                # DhanFeed uses client_id, access_token (dhanhq v2.0)
-                MARKET_FEED = marketfeed.DhanFeed(CLIENT_ID, ACCESS_TOKEN, instruments, version)
+                MARKET_FEED = marketfeed.DhanFeed(client_id, access_token, instruments, "v2")
                 SOCKET_RECONNECT_EVENT.clear()
-                logging.info("✅ Socket reconnected successfully")
             
             MARKET_FEED.run_forever()
             response = MARKET_FEED.get_data()
             if response and 'LTP' in response:
                 on_ticks(MARKET_FEED, response, active_instrument, active_trade)
-                retry_delay = 2  # Reset on success
+                retry_delay = 2
         except Exception as e:
-            logging.error(f"Connection failed: {e}. Retrying in {retry_delay} seconds...")
+            logging.error(f"Connection failed: {e}. Retrying...")
             time.sleep(retry_delay)
-            retry_delay = min(retry_delay * 2, max_delay)  # Double the wait time
+            retry_delay = min(retry_delay * 2, 60)
     
-    # Graceful shutdown
-    logging.info("🔌 Socket shutting down...")
-    try:
-        MARKET_FEED.close_connection()
-    except:
-        pass
+    try: MARKET_FEED.close_connection()
+    except: pass
 
-
-def get_market_feed() -> Optional[Any]:
-    """Get the current market feed instance"""
-    return MARKET_FEED
-
-
-def get_latest_ltp() -> float:
-    """Get the latest LTP"""
-    return LATEST_LTP
-
-
-def get_option_ltp() -> float:
-    """Get the option LTP"""
-    return OPTION_LTP
-
-
-def get_last_tick_time() -> datetime:
-    """Get the last tick time"""
-    return LAST_TICK_TIME
-
-
-def get_last_option_tick_time() -> datetime:
-    """Get the last option tick time"""
-    return LAST_OPTION_TICK_TIME
-
-
-def set_option_ltp(value: float) -> None:
-    """Set the option LTP"""
-    global OPTION_LTP
-    OPTION_LTP = value
-
-
-def reset_option_ltp() -> None:
-    """Reset option LTP to 0"""
-    global OPTION_LTP
-    OPTION_LTP = 0
-
-
-def shutdown_socket() -> None:
-    """Signal socket shutdown"""
-    SHUTDOWN_EVENT.set()
-
-
-def is_shutdown() -> bool:
-    """Check if shutdown is requested"""
-    return SHUTDOWN_EVENT.is_set()
-
-
-def should_process_tick(now_ms: int) -> bool:
-    """Check if the tick should be processed based on the time interval"""
-    return (now_ms - LAST_TICK_TIME) >= config.MIN_TICK_INTERVAL_MS
+# ... Keep existing getters (get_market_feed, etc.) ...
+def get_market_feed() -> Optional[Any]: return MARKET_FEED
+def get_latest_ltp() -> float: return LATEST_LTP
+def get_option_ltp() -> float: return OPTION_LTP
+def get_last_tick_time() -> datetime: return LAST_TICK_TIME
+def get_last_option_tick_time() -> datetime: return LAST_OPTION_TICK_TIME
+def set_option_ltp(value: float) -> None: global OPTION_LTP; OPTION_LTP = value
+def reset_option_ltp() -> None: global OPTION_LTP; OPTION_LTP = 0
+def shutdown_socket() -> None: SHUTDOWN_EVENT.set()
+def is_shutdown() -> bool: return SHUTDOWN_EVENT.is_set()
+def should_process_tick(now_ms: int) -> bool: return (now_ms - LAST_TICK_TIME.timestamp() * 1000) >= config.MIN_TICK_INTERVAL_MS
