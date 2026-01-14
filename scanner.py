@@ -29,6 +29,8 @@ from contract_updater import load_scrip_master
 import socket_handler
 from state_stores import get_signal_tracker
 
+_DATA_CACHE = {}
+
 # =============================================================================
 # STRATEGY PATTERN SUPPORT (Optional - for modular strategies)
 # =============================================================================
@@ -104,7 +106,7 @@ def get_instrument_data(
         future_id: Security ID for the future contract
         exchange_segment_str: Exchange segment string (e.g., "MCX_COMM", "NSE_FNO") - V2 format
         instrument_type: Type of instrument (e.g., "FUTCOM", "INDEX") - V2 format
-    
+        
     Returns:
         Tuple of (df_15min, df_60min) DataFrames, or (None, None) on failure
     """
@@ -116,16 +118,25 @@ def get_instrument_data(
             exchange_segment_str = inst["exchange_segment_str"]
             instrument_type = inst["instrument_type"]
             log_context = instrument_key
+            cache_key = instrument_key
         else:
             if not all([future_id, exchange_segment_str, instrument_type]):
                 logging.error("Data Error: Must provide either instrument_key or all of (future_id, exchange_segment_str, instrument_type)")
                 return None, None
             log_context = f"future_id={future_id}"
-        
+            cache_key = future_id
+
         # V2 API: intraday_minute_data uses different parameters
         # Format: security_id, exchange_segment, instrument_type, from_date, to_date
         to_date = datetime.now().strftime('%Y-%m-%d')
-        from_date = (datetime.now() - timedelta(days=25)).strftime('%Y-%m-%d')
+        
+        # Smart Fetching Logic
+        if cache_key in _DATA_CACHE:
+            # If cached, fetch only today's data to append
+            from_date = to_date
+        else:
+            # If not cached, fetch full history (25 days)
+            from_date = (datetime.now() - timedelta(days=25)).strftime('%Y-%m-%d')
         
         # V2 API call for intraday minute data
         data = dhan.intraday_minute_data(
@@ -169,8 +180,19 @@ def get_instrument_data(
         if df.empty:
             logging.error(f"Data Error for {log_context}: Empty dataframe")
             return None, None
-            
+
         df.set_index('time', inplace=True)
+        
+        # Data Merging
+        if cache_key in _DATA_CACHE:
+            cached_df = _DATA_CACHE[cache_key]
+            # Append new data to cached data
+            df = pd.concat([cached_df, df])
+            # Drop duplicates (timestamps) to ensure clean data
+            df = df[~df.index.duplicated(keep='last')]
+            
+        # Update Cache
+        _DATA_CACHE[cache_key] = df
         
         df_15 = df.resample('15min').agg({'open':'first','high':'max','low':'min','close':'last','volume':'sum'}).dropna()
         df_60 = df.resample('60min').agg({'open':'first','high':'max','low':'min','close':'last','volume':'sum'}).dropna()
@@ -531,7 +553,7 @@ def get_atm_option(
                                 break
                         except ValueError:
                             continue
-                
+                        
                 if strike_key in option_chain_dict:
                     strike_data = option_chain_dict[strike_key]
                     option_data = strike_data.get(target_key, {})

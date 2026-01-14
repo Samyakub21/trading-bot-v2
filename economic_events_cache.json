@@ -442,15 +442,6 @@
       "previous": "4.13M"
     },
     {
-      "name": "FOMC Member Miran Speaks",
-      "timestamp": "2026-01-14T10:00:00",
-      "impact": "low",
-      "country": "USD",
-      "actual": null,
-      "forecast": "",
-      "previous": ""
-    },
-    {
       "name": "MPC Member Ramsden Speaks",
       "timestamp": "2026-01-14T10:30:00",
       "impact": "low",
@@ -467,6 +458,15 @@
       "actual": null,
       "forecast": "-1.7M",
       "previous": "-3.8M"
+    },
+    {
+      "name": "FOMC Member Miran Speaks",
+      "timestamp": "2026-01-14T10:30:00",
+      "impact": "low",
+      "country": "USD",
+      "actual": null,
+      "forecast": "",
+      "previous": ""
     },
     {
       "name": "FOMC Member Bostic Speaks",
@@ -919,5 +919,5 @@
       "previous": ""
     }
   ],
-  "last_update": "2026-01-14T21:06:22.115104"
+  "last_update": "2026-01-15T00:32:24.679484"
 }

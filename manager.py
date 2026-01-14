@@ -498,6 +498,38 @@ def place_exit_order(active_trade: Dict[str, Any], exit_reason: str = "MANUAL") 
     option_ltp = socket_handler.get_option_ltp()
     latest_ltp = socket_handler.get_latest_ltp()
     
+    # -------------------------------------------------------------------------
+    # SAFE SHUTDOWN LOGIC: Force fresh price fetch
+    # -------------------------------------------------------------------------
+    is_critical = any(k in exit_reason for k in ["SHUTDOWN", "EMERGENCY", "User", "Manual"])
+    
+    if is_critical:
+        logging.info(f"🚨 CRITICAL EXIT ({exit_reason}): Forcing fresh price fetch via REST...")
+        try:
+            trade_exchange_segment = active_trade.get("exchange_segment_str", "MCX_COMM")
+            option_id = active_trade.get("option_id")
+            
+            if option_id:
+                # Ensure correct segment format for Quote API
+                quote_segment = trade_exchange_segment
+                if quote_segment == 'MCX': quote_segment = 'MCX_COMM'
+                
+                # Setup 1-second timeout manual poll
+                quote_response = dhan.quote_data({quote_segment: [int(option_id)]})
+                
+                if quote_response.get('status') == 'success':
+                    q_data = quote_response.get('data', {}).get('data', {})
+                    sec_data = q_data.get(str(option_id)) or q_data.get(int(option_id))
+                    
+                    if sec_data:
+                        fresh_ltp = float(sec_data.get('last_price', sec_data.get('ltp', 0)))
+                        if fresh_ltp > 0:
+                            logging.info(f"✅ Fresh REST Price: {fresh_ltp} (Socket was: {option_ltp})")
+                            option_ltp = fresh_ltp
+        except Exception as e:
+            logging.error(f"⚠️ Failed to fetch fresh price during shutdown: {e}")
+            # Fallback to socket_handler.get_option_ltp() value
+            
     trade_lot_size = active_trade.get("lot_size", 10)
     # V2 API: Default to MCX_COMM for commodity options
     trade_exchange_segment = active_trade.get("exchange_segment_str", "MCX_COMM")

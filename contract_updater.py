@@ -29,6 +29,10 @@ SCRIP_MASTER_CSV = "Extras/data/api-scrip-master-detailed.csv"
 # Dhan API scrip master URL
 SCRIP_MASTER_URL = "https://images.dhan.co/api-data/api-scrip-master.csv"
 
+# Global In-Memory Cache for Scrip Master
+_SCRIP_MASTER_CACHE = None
+
+
 
 # =============================================================================
 # SCRIP MASTER MANAGEMENT
@@ -61,9 +65,15 @@ def download_scrip_master(output_path: str = SCRIP_MASTER_CSV) -> bool:
 
 def load_scrip_master(csv_path: str = SCRIP_MASTER_CSV) -> List[Dict]:
     """
-    Load scrip master CSV into memory.
+    Load scrip master CSV into memory (with caching).
     Returns list of contract dictionaries.
     """
+    global _SCRIP_MASTER_CACHE
+    
+    # Return cached data if available
+    if _SCRIP_MASTER_CACHE is not None:
+        return _SCRIP_MASTER_CACHE
+        
     contracts = []
     
     if not os.path.exists(csv_path):
@@ -77,6 +87,8 @@ def load_scrip_master(csv_path: str = SCRIP_MASTER_CSV) -> List[Dict]:
             for row in reader:
                 contracts.append(row)
         
+        # Populate the cache
+        _SCRIP_MASTER_CACHE = contracts
         logging.info(f"📊 Loaded {len(contracts)} contracts from scrip master")
         return contracts
         
