@@ -229,21 +229,25 @@ def close_trade(
     socket_handler.reset_option_ltp()
     
     trade_type = active_trade["type"]
-    opt_type = "CALL" if trade_type == "BUY" else "PUT"
+    opt_type_str = "CE" if trade_type == "BUY" else "PE"
     
     # Get instrument name for display
     inst_name = INSTRUMENTS.get(trade_instrument, {}).get("name", trade_instrument)
     
+    # Construct Option Name for Display
+    atm_strike = active_trade.get("atm_strike", 0)
+    option_name = f"{inst_name} {int(atm_strike)} {opt_type_str}" if atm_strike else f"{inst_name} {opt_type_str}"
+
     result_emoji = "✅" if is_win else "❌"
     pnl_sign = "+" if pnl_per_lot > 0 else ""
     
-    logging.info(f"{result_emoji} TRADE CLOSED: {inst_name} - {exit_reason}")
+    logging.info(f"{result_emoji} TRADE CLOSED: {option_name} - {exit_reason}")
     logging.info(f"   Option Entry: ₹{option_entry} | Exit: ₹{option_exit}")
     logging.info(f"   P&L: {pnl_sign}₹{pnl_per_lot:.2f} | R-Multiple: {r_multiple:.2f}R")
     logging.info(f"   Daily P&L: ₹{daily_data['pnl']:.2f} | Trades: {daily_data['trades']}")
     
     send_alert(
-        f"{result_emoji} **{inst_name} {opt_type} CLOSED** - {exit_reason}\n"
+        f"{result_emoji} **{option_name} CLOSED** - {exit_reason}\n"
         f"Option Entry: ₹{option_entry}\n"
         f"Option Exit: ₹{option_exit}\n"
         f"**P&L: {pnl_sign}₹{pnl_per_lot:.2f} ({r_multiple:.2f}R)**\n"
@@ -286,6 +290,12 @@ def run_manager(active_trade: Dict[str, Any], active_instrument: str) -> None:
             trade_lot_size = active_trade.get("lot_size", INSTRUMENTS[trade_instrument]["lot_size"])
             trade_exchange_segment = active_trade.get("exchange_segment_str", INSTRUMENTS[trade_instrument]["exchange_segment_str"])
             trade_inst_config = INSTRUMENTS.get(trade_instrument, INSTRUMENTS[active_instrument])
+            
+            # Construct Option Name for Alert
+            inst_name = trade_inst_config.get("name", trade_instrument)
+            atm_strike = active_trade.get("atm_strike", 0)
+            opt_type = "CE" if active_trade.get("type", "BUY") == "BUY" else "PE"
+            option_name = f"{inst_name} {int(atm_strike)} {opt_type}" if atm_strike else f"{inst_name} {opt_type}"
             
             # Check auto square-off
             now = datetime.now()
@@ -331,7 +341,7 @@ def run_manager(active_trade: Dict[str, Any], active_instrument: str) -> None:
                         price=squareoff_limit_price
                     )
                 
-                exit_success, exit_details = scanner.verify_order(exit_response, "EXIT-AUTO-SQUAREOFF")
+                exit_success, exit_details = scanner.verify_order(exit_response, "EXIT-AUTO-SQUAREOFF", symbol_name=option_name)
                 exit_price = exit_details.get("avg_price", opt_ltp) if exit_success else opt_ltp
                 
                 close_trade(f"AUTO SQUARE-OFF ({square_off_msg})", latest_ltp, exit_price, active_trade)
@@ -383,7 +393,7 @@ def run_manager(active_trade: Dict[str, Any], active_instrument: str) -> None:
                         price=exit_limit_price
                     )
                 
-                exit_success, exit_details = scanner.verify_order(exit_response, "EXIT-SL")
+                exit_success, exit_details = scanner.verify_order(exit_response, "EXIT-SL", symbol_name=option_name)
                 
                 if exit_success:
                     exit_price = exit_details.get("avg_price", opt_ltp)
@@ -438,7 +448,7 @@ def run_manager(active_trade: Dict[str, Any], active_instrument: str) -> None:
                         price=target_exit_price
                     )
                 
-                exit_success, exit_details = scanner.verify_order(exit_response, "EXIT-TARGET")
+                exit_success, exit_details = scanner.verify_order(exit_response, "EXIT-TARGET", symbol_name=option_name)
                 exit_price = exit_details.get("avg_price", opt_ltp) if exit_success else opt_ltp
                 
                 close_trade("1:5 TARGET HIT", ltp, exit_price, active_trade)
@@ -471,7 +481,14 @@ def run_manager(active_trade: Dict[str, Any], active_instrument: str) -> None:
                 with trade_lock:
                     active_trade["sl"] = new_sl
                     save_state(active_trade)
-                send_alert(f"{msg}\n🔒 Locking {lock_r}R\nNew SL: {new_sl}\nOption P&L: ₹{option_pnl:.2f}")
+                
+                # Construct Option Name for Alert
+                inst_name = INSTRUMENTS.get(active_trade.get("instrument", ""), {}).get("name", active_trade.get("instrument", ""))
+                atm_strike = active_trade.get("atm_strike", 0)
+                opt_type = "CE" if active_trade["type"] == "BUY" else "PE"
+                option_name = f"{inst_name} {int(atm_strike)} {opt_type}" if atm_strike else f"{inst_name} {opt_type}"
+                
+                send_alert(f"{msg}\n**{option_name}**\n🔒 Locking {lock_r}R\nNew SL: {new_sl}\nOption P&L: ₹{option_pnl:.2f}")
 
         time.sleep(0.5)
 
@@ -491,6 +508,12 @@ def place_exit_order(active_trade: Dict[str, Any], exit_reason: str = "MANUAL") 
     
     # Check for Paper Trading
     is_paper_trading = config.get_trading_param("PAPER_TRADING", False)
+    
+    # Construct Option Name
+    inst_name = INSTRUMENTS.get(active_trade.get("instrument", ""), {}).get("name", active_trade.get("instrument", ""))
+    atm_strike = active_trade.get("atm_strike", 0)
+    opt_type = "CE" if active_trade.get("type", "BUY") == "BUY" else "PE"
+    option_name = f"{inst_name} {int(atm_strike)} {opt_type}" if atm_strike else f"{inst_name} {opt_type}"
     
     if is_paper_trading:
         logging.info(f"📝 PAPER TRADING: Placing EXIT order ({exit_reason}) @ ₹{exit_limit_price}")
@@ -512,7 +535,7 @@ def place_exit_order(active_trade: Dict[str, Any], exit_reason: str = "MANUAL") 
             price=exit_limit_price
         )
     
-    exit_success, exit_details = scanner.verify_order(exit_response, f"EXIT-{exit_reason}")
+    exit_success, exit_details = scanner.verify_order(exit_response, f"EXIT-{exit_reason}", symbol_name=option_name)
     
     if exit_success:
         exit_price = exit_details.get("avg_price", opt_ltp)

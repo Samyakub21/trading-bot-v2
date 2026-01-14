@@ -718,7 +718,8 @@ def _wait_with_backoff(attempt: int, config: dict = ORDER_VERIFICATION_CONFIG) -
 def verify_order(
     order_response: Optional[Dict[str, Any]],
     action: str = "ENTRY",
-    config: Optional[Dict[str, Any]] = None
+    config: Optional[Dict[str, Any]] = None,
+    symbol_name: str = ""
 ) -> Tuple[bool, Optional[Dict[str, Any]]]:
     """
     Verify order was placed successfully and get order details.
@@ -743,6 +744,8 @@ def verify_order(
     except Exception:
         pass
     
+    symbol_display = f"({symbol_name})" if symbol_name else ""
+    
     try:
         if order_response is None:
             logging.error(f"[{action}] Order response is None")
@@ -751,7 +754,7 @@ def verify_order(
         if order_response.get('status') == 'failure':
             error_msg = order_response.get('remarks', 'Unknown error')
             logging.error(f"[{action}] Order FAILED: {error_msg}")
-            send_alert(f"❌ **ORDER FAILED** ({action})\n{error_msg}")
+            send_alert(f"❌ **ORDER FAILED** ({action}) {symbol_display}\n{error_msg}")
             return False, None
         
         order_id = order_response.get('data', {}).get('orderId')
@@ -791,7 +794,7 @@ def verify_order(
                     # V2 API uses omsErrorDescription instead of rejectedReason
                     reason = order_data.get('omsErrorDescription') or order_data.get('rejectedReason', 'Unknown')
                     logging.error(f"[{action}] Order {status}: {reason}")
-                    send_alert(f"❌ **ORDER {status}** ({action})\n{reason}")
+                    send_alert(f"❌ **ORDER {status}** ({action}) {symbol_display}\n{reason}")
                     return False, None
                 
                 elif status in ['PENDING', 'OPEN']:
@@ -857,6 +860,10 @@ def execute_trade_entry(
     """Execute a trade entry for a specific instrument"""
     inst = INSTRUMENTS[inst_key]
     
+    # Calculate Option Name for Alerts
+    opt_type_str = "CE" if signal == "BUY" else "PE"
+    option_name = f"{inst['name']} {int(atm_strike)} {opt_type_str}"
+    
     # Place order with LIMIT buffer
     limit_price = round(price * (1 + LIMIT_ORDER_BUFFER), 2)
     
@@ -883,7 +890,7 @@ def execute_trade_entry(
             price=limit_price
         )
     
-    order_success, order_details = verify_order(order_response, "ENTRY")
+    order_success, order_details = verify_order(order_response, "ENTRY", symbol_name=option_name)
     
     if not order_success:
         logging.error(f"❌ {inst_key}: Entry order failed, skipping trade")
@@ -933,8 +940,11 @@ def execute_trade_entry(
     logging.info(f">>> NEW TRADE: {inst['name']} {atm_strike} {opt_type} @ Premium ₹{option_entry_price} | Future: {price} | SL: {dynamic_sl}")
     
     # Send standard trade alert
+    # Calculate Option Name
+    option_name = f"{inst['name']} {int(atm_strike)} {opt_type}"
+    
     send_alert(
-        f"🚀 **{inst['name']} {atm_strike} {opt_type} ENTERED**\n"
+        f"🚀 **{option_name} ENTERED**\n"
         f"Option Premium: ₹{option_entry_price}\n"
         f"Future: {price}\n"
         f"SL: {dynamic_sl}\n"
@@ -985,7 +995,18 @@ def run_scanner(active_trade: Dict[str, Any], active_instrument: str) -> None:
                         exit_signal = json.load(f)
                     
                     logging.warning(f"🚨 EMERGENCY EXIT requested by {exit_signal.get('requested_by', 'dashboard')}")
-                    send_alert(f"🚨 **EMERGENCY EXIT** requested via dashboard")
+                    
+                    # Construct Option Name for Alert
+                    inst_key = active_trade.get("instrument")
+                    if inst_key:
+                        inst_name = INSTRUMENTS.get(inst_key, {}).get("name", inst_key)
+                        atm_strike = active_trade.get("atm_strike", 0)
+                        opt_type = "CE" if active_trade.get("type", "BUY") == "BUY" else "PE"
+                        option_name = f"{inst_name} {int(atm_strike)} {opt_type}" if atm_strike else f"{inst_name} {opt_type}"
+                    else:
+                        option_name = "Unknown Position"
+
+                    send_alert(f"🚨 **EMERGENCY EXIT** requested via dashboard\nPosition: {option_name}")
                     
                     # Import manager to close the trade
                     from manager import place_exit_order
@@ -1018,11 +1039,16 @@ def run_scanner(active_trade: Dict[str, Any], active_instrument: str) -> None:
                     
                     if inst_key and signal and inst_key in INSTRUMENTS:
                         logging.info(f"📝 MANUAL TRADE signal received: {inst_key} {signal}")
-                        send_alert(f"📝 **MANUAL TRADE** signal received\n{inst_key} {signal}")
                         
                         inst = INSTRUMENTS[inst_key]
                         price = manual_signal.get("future_price", 0)
                         atm_strike = manual_signal.get("atm_strike", 0)
+                        
+                        # Construct option name for alert
+                        opt_type = "CE" if signal == "BUY" else "PE" 
+                        option_name = f"{inst['name']} {int(atm_strike)} {opt_type}" if atm_strike else f"{inst['name']} {opt_type}"
+                        
+                        send_alert(f"📝 **MANUAL TRADE** signal received\n{option_name}\nSignal: {signal}")
                         
                         # Get option ID
                         opt_id = get_atm_option(
@@ -1060,13 +1086,15 @@ def run_scanner(active_trade: Dict[str, Any], active_instrument: str) -> None:
                                     logging.info(f"✅ Manual trade executed: {inst_key} {signal}")
                                 else:
                                     logging.error(f"❌ Manual trade execution failed")
-                                    send_alert(f"❌ **MANUAL TRADE FAILED**\n{inst_key} {signal}")
+                                    send_alert(f"❌ **MANUAL TRADE FAILED** ({option_name})\n{inst_key} {signal}")
                             else:
+                                target_type = "CE" if signal == "BUY" else "PE"
+                                option_name = f"{inst_key} {int(atm_strike)} {target_type}"
                                 logging.warning(f"❌ Manual trade skipped - insufficient margin: {margin_msg}")
-                                send_alert(f"⚠️ **MANUAL TRADE SKIPPED**\n{margin_msg}")
+                                send_alert(f"⚠️ **MANUAL TRADE SKIPPED** ({option_name})\n{margin_msg}")
                         else:
                             logging.error(f"❌ Could not find option for manual trade")
-                            send_alert(f"❌ **MANUAL TRADE FAILED**\nCould not find option contract")
+                            send_alert(f"❌ **MANUAL TRADE FAILED** ({option_name})\nCould not find option contract")
                     
                     # Remove the signal file regardless of outcome
                     MANUAL_TRADE_SIGNAL_FILE.unlink()
@@ -1085,7 +1113,7 @@ def run_scanner(active_trade: Dict[str, Any], active_instrument: str) -> None:
             if ECONOMIC_CALENDAR_AVAILABLE and _economic_calendar:
                 should_pause, pause_event = _economic_calendar.should_pause_trading()
                 if should_pause:
-                    logging.info(f"📰 Trading paused due to economic event: {pause_event.get('title', 'Unknown')}")
+                    logging.info(f"📰 Trading paused due to economic event: {pause_event.name}")
                     # Log upcoming events periodically (once per hour)
                     if not hasattr(run_scanner, '_last_calendar_log') or \
                        (datetime.now() - run_scanner._last_calendar_log).total_seconds() > 3600:
@@ -1093,7 +1121,7 @@ def run_scanner(active_trade: Dict[str, Any], active_instrument: str) -> None:
                         if upcoming:
                             logging.info(f"📅 Upcoming high-impact events ({len(upcoming)}):")
                             for evt in upcoming[:3]:
-                                logging.info(f"   - {evt.get('title', 'N/A')} @ {evt.get('date', 'N/A')}")
+                                logging.info(f"   - {evt.name} @ {evt.timestamp}")
                         run_scanner._last_calendar_log = datetime.now()
                     time.sleep(60)  # Check again in 1 minute
                     continue
@@ -1156,8 +1184,10 @@ def run_scanner(active_trade: Dict[str, Any], active_instrument: str) -> None:
                         
                         margin_ok, margin_msg = check_margin_available(opt_id, inst["exchange_segment_str"], inst["lot_size"])
                         if not margin_ok:
+                            target_type = "CE" if signal == "BUY" else "PE"
+                            option_name = f"{inst_key} {int(atm_strike)} {target_type}"
                             logging.warning(f"💰 {inst_key}: {margin_msg}")
-                            send_alert(f"⚠️ **TRADE SKIPPED** ({inst_key})\n{margin_msg}")
+                            send_alert(f"⚠️ **TRADE SKIPPED** ({option_name})\n{margin_msg}")
                             update_last_signal(signal, instrument=inst_key)
                             continue
                         
@@ -1224,8 +1254,10 @@ def run_scanner(active_trade: Dict[str, Any], active_instrument: str) -> None:
                             if opt_id:
                                 margin_ok, margin_msg = check_margin_available(opt_id, inst["exchange_segment_str"], inst["lot_size"])
                                 if not margin_ok:
+                                    target_type = "CE" if signal == "BUY" else "PE"
+                                    option_name = f"{active_instrument} {int(atm_strike)} {target_type}"
                                     logging.warning(f"💰 {active_instrument}: {margin_msg}")
-                                    send_alert(f"⚠️ **TRADE SKIPPED** ({active_instrument})\n{margin_msg}")
+                                    send_alert(f"⚠️ **TRADE SKIPPED** ({option_name})\n{margin_msg}")
                                     update_last_signal(signal, instrument=active_instrument)
                                     time.sleep(60)
                                     continue

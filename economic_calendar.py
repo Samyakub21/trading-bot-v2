@@ -341,6 +341,18 @@ class EconomicCalendar:
             # Save to cache
             self.save_events_to_cache()
     
+    def should_pause_trading(self) -> Tuple[bool, Optional[EconomicEvent]]:
+        """
+        Check if trading should be paused due to any high-impact event.
+        Checks all configured instruments.
+        """
+        active_events = self.get_active_events(window_minutes=max(PAUSE_BEFORE_EVENT, PAUSE_AFTER_EVENT))
+        
+        if active_events:
+            return True, active_events[0]
+        
+        return False, None
+
     def get_upcoming_events(
         self,
         instrument: Optional[str] = None,
