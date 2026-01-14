@@ -30,8 +30,8 @@ from instruments import (
 TELEGRAM_TOKEN = config.TELEGRAM_TOKEN
 TELEGRAM_CHAT_ID = config.TELEGRAM_CHAT_ID
 
-# Signal Bot (separate channel for trade signals)
-SIGNAL_BOT_TOKEN = "8503785442:AAF3knL3oeaRcrdRLWu-Ek_4bLFQX34dbS8"
+# Signal Bot (separate channel for trade signals - loaded from config)
+SIGNAL_BOT_TOKEN = config.SIGNAL_BOT_TOKEN
 
 # State files (configurable via trading_config.json or env vars)
 STATE_FILE = config.STATE_FILE

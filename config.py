@@ -81,6 +81,7 @@ class Config:
         self.ACCESS_TOKEN = os.getenv('DHAN_ACCESS_TOKEN')
         self.TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
         self.TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
+        self.SIGNAL_BOT_TOKEN = os.getenv('SIGNAL_BOT_TOKEN')
         
         # If not in environment, try to load from credentials.json
         if not all([self.CLIENT_ID, self.ACCESS_TOKEN, self.TELEGRAM_TOKEN, self.TELEGRAM_CHAT_ID]):
@@ -99,6 +100,8 @@ class Config:
         self.ACCESS_TOKEN = str(self.ACCESS_TOKEN).strip()
         self.TELEGRAM_TOKEN = str(self.TELEGRAM_TOKEN).strip()
         self.TELEGRAM_CHAT_ID = str(self.TELEGRAM_CHAT_ID).strip()
+        if self.SIGNAL_BOT_TOKEN:
+            self.SIGNAL_BOT_TOKEN = str(self.SIGNAL_BOT_TOKEN).strip()
         
         # --- Trading Configuration ---
         self._trading_config = self._load_trading_config()
@@ -118,6 +121,7 @@ class Config:
             self.ACCESS_TOKEN = creds.get('ACCESS_TOKEN', self.ACCESS_TOKEN)
             self.TELEGRAM_TOKEN = creds.get('TELEGRAM_TOKEN', self.TELEGRAM_TOKEN)
             self.TELEGRAM_CHAT_ID = creds.get('TELEGRAM_CHAT_ID', self.TELEGRAM_CHAT_ID)
+            self.SIGNAL_BOT_TOKEN = creds.get('SIGNAL_BOT_TOKEN', self.SIGNAL_BOT_TOKEN)
         except Exception as e:
             print(f"Warning: Could not load credentials.json: {e}")
     
