@@ -1,0 +1,16 @@
+[
+  {
+    "timestamp": "2026-01-14T20:07:12.309934",
+    "user": "admin",
+    "changes": {
+      "INSTRUMENT_PRIORITY": {
+        "CRUDEOIL": 1,
+        "NATURALGAS": 2,
+        "GOLD": 3,
+        "SILVER": 4,
+        "NIFTY": 5,
+        "BANKNIFTY": 6
+      }
+    }
+  }
+]

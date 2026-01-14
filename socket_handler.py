@@ -6,6 +6,7 @@ import logging
 import time
 import threading
 import asyncio
+import json
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 from dhanhq import marketfeed
@@ -28,6 +29,7 @@ OPTION_LTP = 0              # Option Premium LTP
 LAST_TICK_TIME = datetime.now()
 LAST_OPTION_TICK_TIME = datetime.now()
 INSTRUMENT_LTP = {}         # {instrument_key: {"ltp": price, "last_update": datetime}}
+MESSAGE_COUNT = 0
 
 # Socket events
 SOCKET_RECONNECT_EVENT = threading.Event()
@@ -49,7 +51,9 @@ def get_all_instrument_subscriptions(active_instrument: str) -> List[Tuple[int, 
 
 def on_ticks(instance: Any, ticks: Dict[str, Any], active_instrument: str, active_trade: Dict[str, Any]) -> None:
     """Handle incoming tick data"""
-    global LATEST_LTP, OPTION_LTP, LAST_TICK_TIME, LAST_OPTION_TICK_TIME
+    global LATEST_LTP, OPTION_LTP, LAST_TICK_TIME, LAST_OPTION_TICK_TIME, MESSAGE_COUNT
+    
+    MESSAGE_COUNT += 1
     
     if 'LTP' in ticks:
         security_id = str(ticks.get('security_id', ''))
@@ -121,6 +125,23 @@ def socket_heartbeat_monitor() -> None:
             SOCKET_HEALTHY.clear()
         
         time.sleep(1)  # Small delay between checks
+        
+        # Create status dict
+        status = {
+            "connected": not SHUTDOWN_EVENT.is_set() and MARKET_FEED is not None,
+            "last_message_time": LAST_TICK_TIME.isoformat(),
+            "latency_ms": 0, # Placeholder or calc
+            "messages_received": MESSAGE_COUNT,
+            "errors": 0,
+            "reconnect_count": 0,
+            "subscribed_symbols": list(INSTRUMENTS.keys()),
+            "last_prices": {k: {"ltp": v["ltp"]} for k, v in INSTRUMENT_LTP.items()}
+        }
+        try:
+            with open(config.DATA_DIR / "websocket_status.json", "w") as f:
+                json.dump(status, f)
+        except Exception as e:
+            logging.error(f"Failed to write status: {e}")
 
 
 def start_socket(client_id: str, access_token: str, active_instrument: str, active_trade: Dict[str, Any]) -> None:
