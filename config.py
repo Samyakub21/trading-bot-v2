@@ -42,6 +42,28 @@ DEFAULT_TRADING_CONFIG = {
     "POLL_FALLBACK_THRESHOLD": 5,     # Seconds before triggering REST fallback
     "POLL_COOLDOWN": 2,               # Minimum seconds between REST polls
     
+    # Instrument Configuration
+    "ENABLED_INSTRUMENTS": ["CRUDEOIL", "NATURALGAS", "GOLD", "SILVER", "NIFTY", "BANKNIFTY"],
+    "INSTRUMENT_PRIORITY": {
+        "CRUDEOIL": 1,      # Highest priority
+        "GOLD": 2,
+        "SILVER": 3,
+        "NATURALGAS": 4,
+        "NIFTY": 5,
+        "BANKNIFTY": 6      # Lowest priority
+    },
+    
+    # Per-Instrument Custom Settings (overrides global settings)
+    "PER_INSTRUMENT_SETTINGS": {
+        # Example: Custom settings for specific instruments
+        # "CRUDEOIL": {
+        #     "use_custom": True,
+        #     "rsi_bullish": 58,
+        #     "rsi_bearish": 42,
+        #     "volume_multiplier": 1.3
+        # }
+    },
+    
     # State Files (fallback when database is disabled)
     "STATE_FILE": str(DATA_DIR / "trade_state_active.json"),
     "DAILY_PNL_FILE": str(DATA_DIR / "daily_pnl_combined.json"),
@@ -217,6 +239,65 @@ class Config:
     @property
     def POLL_COOLDOWN(self) -> int:
         return self._trading_config.get("POLL_COOLDOWN", 2)
+    
+    # --- Instrument Configuration ---
+    @property
+    def ENABLED_INSTRUMENTS(self) -> list:
+        """List of enabled instruments for scanning/trading"""
+        return self._trading_config.get("ENABLED_INSTRUMENTS", 
+            ["CRUDEOIL", "NATURALGAS", "GOLD", "SILVER", "NIFTY", "BANKNIFTY"])
+    
+    @property
+    def INSTRUMENT_PRIORITY(self) -> dict:
+        """Priority order for instruments (1=highest)"""
+        return self._trading_config.get("INSTRUMENT_PRIORITY", {
+            "CRUDEOIL": 1, "GOLD": 2, "SILVER": 3, 
+            "NATURALGAS": 4, "NIFTY": 5, "BANKNIFTY": 6
+        })
+    
+    @property
+    def PER_INSTRUMENT_SETTINGS(self) -> dict:
+        """Custom per-instrument signal settings"""
+        return self._trading_config.get("PER_INSTRUMENT_SETTINGS", {})
+    
+    def get_instrument_settings(self, instrument: str) -> dict:
+        """
+        Get signal settings for a specific instrument.
+        Returns custom settings if defined, otherwise global settings.
+        
+        Args:
+            instrument: Instrument key (e.g., 'CRUDEOIL')
+            
+        Returns:
+            Dictionary with rsi_bullish, rsi_bearish, volume_multiplier
+        """
+        per_inst = self.PER_INSTRUMENT_SETTINGS.get(instrument, {})
+        
+        if per_inst.get("use_custom", False):
+            return {
+                "rsi_bullish": per_inst.get("rsi_bullish", self.RSI_BULLISH_THRESHOLD),
+                "rsi_bearish": per_inst.get("rsi_bearish", self.RSI_BEARISH_THRESHOLD),
+                "volume_multiplier": per_inst.get("volume_multiplier", self.VOLUME_MULTIPLIER)
+            }
+        
+        # Return global settings
+        return {
+            "rsi_bullish": self.RSI_BULLISH_THRESHOLD,
+            "rsi_bearish": self.RSI_BEARISH_THRESHOLD,
+            "volume_multiplier": self.VOLUME_MULTIPLIER
+        }
+    
+    def get_enabled_instruments_sorted(self) -> list:
+        """
+        Get enabled instruments sorted by priority.
+        
+        Returns:
+            List of instrument keys sorted by priority (highest first)
+        """
+        enabled = self.ENABLED_INSTRUMENTS
+        priority = self.INSTRUMENT_PRIORITY
+        
+        return sorted(enabled, key=lambda x: priority.get(x, 999))
     
     # --- Socket/Network Configuration ---
     @property

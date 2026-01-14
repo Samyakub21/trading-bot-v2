@@ -1,11 +1,13 @@
 """
 Algo Trading Dashboard with Authentication, WebSocket Status, and Prometheus Metrics
+✨ Modern Gen-Z UI with glassmorphism and professional design
 Fixed issues:
 - Removed st.rerun() infinite loop (using st.fragment for selective refresh)
 - Updated file paths to new combined naming scheme
 - Added basic authentication
 - Improved error handling for missing files
 - Upgraded to bcrypt password hashing with secure password policy
+- Modern UI with dark theme, glassmorphism effects, and animations
 """
 
 import streamlit as st
@@ -27,6 +29,536 @@ from instruments import INSTRUMENTS, get_instruments_to_scan
 
 # Trading config file path for live updates
 TRADING_CONFIG_FILE = Path(__file__).parent / 'trading_config.json'
+
+# =============================================================================
+# 🎨 MODERN UI THEME & STYLES
+# =============================================================================
+
+MODERN_CSS = """
+<style>
+/* ============================================
+   🎨 MODERN GEN-Z TRADING DASHBOARD THEME
+   ============================================ */
+
+/* Import Google Font */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+/* Root variables */
+:root {
+    --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    --secondary-gradient: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+    --success-gradient: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+    --danger-gradient: linear-gradient(135deg, #eb3349 0%, #f45c43 100%);
+    --dark-bg: #0f0f1a;
+    --card-bg: rgba(255, 255, 255, 0.05);
+    --glass-bg: rgba(255, 255, 255, 0.08);
+    --text-primary: #ffffff;
+    --text-secondary: rgba(255, 255, 255, 0.7);
+    --border-glass: rgba(255, 255, 255, 0.1);
+    --shadow-glow: 0 8px 32px rgba(102, 126, 234, 0.25);
+    --neon-blue: #00d4ff;
+    --neon-purple: #b24bf3;
+    --neon-green: #00ff88;
+    --neon-red: #ff3366;
+}
+
+/* Global styles */
+.stApp {
+    background: linear-gradient(180deg, #0f0f1a 0%, #1a1a2e 50%, #16213e 100%) !important;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif !important;
+}
+
+/* Hide Streamlit branding */
+#MainMenu {visibility: hidden;}
+footer {visibility: hidden;}
+header {visibility: hidden;}
+
+/* Sidebar styling */
+[data-testid="stSidebar"] {
+    background: linear-gradient(180deg, rgba(15, 15, 26, 0.95) 0%, rgba(26, 26, 46, 0.95) 100%) !important;
+    border-right: 1px solid rgba(255, 255, 255, 0.1) !important;
+    backdrop-filter: blur(20px) !important;
+}
+
+[data-testid="stSidebar"] > div:first-child {
+    padding-top: 2rem;
+}
+
+/* Main content area */
+.main .block-container {
+    padding: 2rem 3rem;
+    max-width: 100%;
+}
+
+/* Metric cards - Modern glassmorphism */
+[data-testid="stMetric"] {
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0.03) 100%) !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    border-radius: 20px !important;
+    padding: 1.5rem !important;
+    backdrop-filter: blur(10px) !important;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1) !important;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+[data-testid="stMetric"]:hover {
+    transform: translateY(-4px) !important;
+    box-shadow: 0 12px 40px rgba(102, 126, 234, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.15) !important;
+    border-color: rgba(102, 126, 234, 0.5) !important;
+}
+
+[data-testid="stMetric"] label {
+    color: rgba(255, 255, 255, 0.6) !important;
+    font-size: 0.85rem !important;
+    font-weight: 500 !important;
+    letter-spacing: 0.5px !important;
+    text-transform: uppercase !important;
+}
+
+[data-testid="stMetric"] [data-testid="stMetricValue"] {
+    color: #ffffff !important;
+    font-size: 2rem !important;
+    font-weight: 700 !important;
+    background: linear-gradient(135deg, #ffffff 0%, rgba(255, 255, 255, 0.8) 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+}
+
+[data-testid="stMetric"] [data-testid="stMetricDelta"] {
+    font-weight: 600 !important;
+}
+
+/* Positive delta styling */
+[data-testid="stMetricDelta"] svg[data-testid="stArrowUp"] {
+    color: #00ff88 !important;
+}
+
+[data-testid="stMetricDelta"]:has(svg[data-testid="stArrowUp"]) {
+    color: #00ff88 !important;
+}
+
+/* Headers */
+h1, h2, h3 {
+    color: #ffffff !important;
+    font-weight: 700 !important;
+}
+
+h1 {
+    font-size: 2.5rem !important;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-bottom: 1.5rem !important;
+}
+
+/* Buttons - Modern style */
+.stButton > button {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+    color: white !important;
+    border: none !important;
+    border-radius: 12px !important;
+    padding: 0.75rem 2rem !important;
+    font-weight: 600 !important;
+    font-size: 0.95rem !important;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4) !important;
+    text-transform: none !important;
+    letter-spacing: 0.3px !important;
+}
+
+.stButton > button:hover {
+    transform: translateY(-2px) !important;
+    box-shadow: 0 8px 25px rgba(102, 126, 234, 0.6) !important;
+    background: linear-gradient(135deg, #764ba2 0%, #667eea 100%) !important;
+}
+
+.stButton > button:active {
+    transform: translateY(0) !important;
+}
+
+/* Primary button */
+.stButton > button[kind="primary"] {
+    background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%) !important;
+    box-shadow: 0 4px 15px rgba(56, 239, 125, 0.4) !important;
+}
+
+.stButton > button[kind="primary"]:hover {
+    box-shadow: 0 8px 25px rgba(56, 239, 125, 0.6) !important;
+    background: linear-gradient(135deg, #38ef7d 0%, #11998e 100%) !important;
+}
+
+/* Secondary/Danger button */
+.stButton > button[kind="secondary"] {
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.05) 100%) !important;
+    border: 1px solid rgba(255, 255, 255, 0.2) !important;
+    box-shadow: none !important;
+}
+
+.stButton > button[kind="secondary"]:hover {
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.15) 0%, rgba(255, 255, 255, 0.1) 100%) !important;
+    border-color: rgba(255, 255, 255, 0.3) !important;
+}
+
+/* Emergency button in sidebar */
+[data-testid="stSidebar"] .stButton > button[kind="primary"] {
+    background: linear-gradient(135deg, #eb3349 0%, #f45c43 100%) !important;
+    box-shadow: 0 4px 15px rgba(235, 51, 73, 0.4) !important;
+    animation: pulse-danger 2s infinite !important;
+}
+
+@keyframes pulse-danger {
+    0%, 100% { box-shadow: 0 4px 15px rgba(235, 51, 73, 0.4); }
+    50% { box-shadow: 0 4px 25px rgba(235, 51, 73, 0.7); }
+}
+
+/* Input fields */
+.stTextInput > div > div > input,
+.stNumberInput > div > div > input,
+.stSelectbox > div > div {
+    background: rgba(255, 255, 255, 0.05) !important;
+    border: 1px solid rgba(255, 255, 255, 0.15) !important;
+    border-radius: 12px !important;
+    color: white !important;
+    padding: 0.75rem 1rem !important;
+    transition: all 0.3s ease !important;
+}
+
+.stTextInput > div > div > input:focus,
+.stNumberInput > div > div > input:focus {
+    border-color: #667eea !important;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.2) !important;
+}
+
+/* Select boxes */
+[data-testid="stSelectbox"] {
+    background: transparent !important;
+}
+
+/* Sliders */
+.stSlider > div > div > div {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+}
+
+.stSlider > div > div > div > div {
+    background: white !important;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3) !important;
+}
+
+/* Checkboxes */
+.stCheckbox > label > div[data-testid="stCheckbox"] {
+    background: rgba(255, 255, 255, 0.1) !important;
+    border-radius: 6px !important;
+}
+
+/* Tabs */
+.stTabs [data-baseweb="tab-list"] {
+    background: rgba(255, 255, 255, 0.05) !important;
+    border-radius: 16px !important;
+    padding: 0.5rem !important;
+    gap: 0.5rem !important;
+}
+
+.stTabs [data-baseweb="tab"] {
+    background: transparent !important;
+    border-radius: 12px !important;
+    color: rgba(255, 255, 255, 0.6) !important;
+    font-weight: 500 !important;
+    padding: 0.75rem 1.5rem !important;
+    transition: all 0.3s ease !important;
+}
+
+.stTabs [data-baseweb="tab"]:hover {
+    color: white !important;
+    background: rgba(255, 255, 255, 0.1) !important;
+}
+
+.stTabs [aria-selected="true"] {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+    color: white !important;
+}
+
+.stTabs [data-baseweb="tab-panel"] {
+    padding: 1.5rem 0 !important;
+}
+
+/* Expander */
+.streamlit-expanderHeader {
+    background: rgba(255, 255, 255, 0.05) !important;
+    border-radius: 12px !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    color: white !important;
+    font-weight: 500 !important;
+    padding: 1rem !important;
+}
+
+.streamlit-expanderHeader:hover {
+    background: rgba(255, 255, 255, 0.08) !important;
+    border-color: rgba(102, 126, 234, 0.5) !important;
+}
+
+/* Data frames */
+.stDataFrame {
+    border-radius: 16px !important;
+    overflow: hidden !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+}
+
+[data-testid="stDataFrame"] > div {
+    background: rgba(255, 255, 255, 0.03) !important;
+}
+
+/* Alerts */
+.stAlert {
+    border-radius: 12px !important;
+    border: none !important;
+    backdrop-filter: blur(10px) !important;
+}
+
+[data-testid="stAlert"][data-baseweb="notification"] {
+    background: rgba(255, 255, 255, 0.05) !important;
+}
+
+/* Success alert */
+.element-container:has([data-testid="stAlert"]) .stAlert > div:first-child {
+    border-radius: 12px !important;
+}
+
+/* Info box */
+.stInfo {
+    background: linear-gradient(135deg, rgba(102, 126, 234, 0.2) 0%, rgba(118, 75, 162, 0.2) 100%) !important;
+    border: 1px solid rgba(102, 126, 234, 0.3) !important;
+}
+
+/* Warning box */
+.stWarning {
+    background: linear-gradient(135deg, rgba(255, 193, 7, 0.2) 0%, rgba(255, 152, 0, 0.2) 100%) !important;
+    border: 1px solid rgba(255, 193, 7, 0.3) !important;
+}
+
+/* Error box */
+.stError {
+    background: linear-gradient(135deg, rgba(235, 51, 73, 0.2) 0%, rgba(244, 92, 67, 0.2) 100%) !important;
+    border: 1px solid rgba(235, 51, 73, 0.3) !important;
+}
+
+/* Success box */
+.stSuccess {
+    background: linear-gradient(135deg, rgba(17, 153, 142, 0.2) 0%, rgba(56, 239, 125, 0.2) 100%) !important;
+    border: 1px solid rgba(56, 239, 125, 0.3) !important;
+}
+
+/* Progress bars */
+.stProgress > div > div {
+    background: rgba(255, 255, 255, 0.1) !important;
+    border-radius: 10px !important;
+}
+
+.stProgress > div > div > div {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+    border-radius: 10px !important;
+}
+
+/* Divider */
+hr {
+    border-color: rgba(255, 255, 255, 0.1) !important;
+    margin: 2rem 0 !important;
+}
+
+/* Radio buttons */
+.stRadio > div {
+    background: rgba(255, 255, 255, 0.03) !important;
+    border-radius: 12px !important;
+    padding: 1rem !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+}
+
+.stRadio > div > div > label {
+    color: rgba(255, 255, 255, 0.8) !important;
+    font-weight: 500 !important;
+}
+
+/* Plotly charts */
+.js-plotly-plot {
+    border-radius: 16px !important;
+    overflow: hidden !important;
+}
+
+/* Custom dashboard header */
+.dashboard-header {
+    background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 20px;
+    padding: 2rem;
+    margin-bottom: 2rem;
+    backdrop-filter: blur(10px);
+}
+
+/* Status indicator animations */
+@keyframes pulse-green {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(0, 255, 136, 0.4); }
+    50% { box-shadow: 0 0 0 10px rgba(0, 255, 136, 0); }
+}
+
+@keyframes pulse-red {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(255, 51, 102, 0.4); }
+    50% { box-shadow: 0 0 0 10px rgba(255, 51, 102, 0); }
+}
+
+.status-active {
+    animation: pulse-green 2s infinite;
+}
+
+.status-inactive {
+    animation: pulse-red 2s infinite;
+}
+
+/* Instrument cards */
+.instrument-card {
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0.03) 100%);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 16px;
+    padding: 1.5rem;
+    margin: 0.5rem 0;
+    transition: all 0.3s ease;
+}
+
+.instrument-card:hover {
+    transform: translateX(5px);
+    border-color: rgba(102, 126, 234, 0.5);
+    box-shadow: 0 4px 20px rgba(102, 126, 234, 0.2);
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);
+}
+
+/* Caption styling */
+.stCaption {
+    color: rgba(255, 255, 255, 0.5) !important;
+}
+
+/* Form styling */
+[data-testid="stForm"] {
+    background: rgba(255, 255, 255, 0.03) !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    border-radius: 16px !important;
+    padding: 1.5rem !important;
+}
+
+/* Login form special styling */
+.login-box {
+    background: linear-gradient(135deg, rgba(102, 126, 234, 0.15) 0%, rgba(118, 75, 162, 0.15) 100%);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 24px;
+    padding: 3rem;
+    backdrop-filter: blur(20px);
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+}
+
+/* Toggle switch styling */
+.toggle-container {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 0.75rem 1rem;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    margin: 0.5rem 0;
+    transition: all 0.3s ease;
+}
+
+.toggle-container:hover {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(102, 126, 234, 0.3);
+}
+
+/* Priority badge */
+.priority-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    font-weight: 700;
+    font-size: 0.85rem;
+    margin-right: 0.75rem;
+}
+
+.priority-1 { background: linear-gradient(135deg, #FFD700, #FFA500); color: #000; }
+.priority-2 { background: linear-gradient(135deg, #C0C0C0, #A0A0A0); color: #000; }
+.priority-3 { background: linear-gradient(135deg, #CD7F32, #8B4513); color: #fff; }
+.priority-4 { background: linear-gradient(135deg, #667eea, #764ba2); color: #fff; }
+.priority-5 { background: linear-gradient(135deg, #11998e, #38ef7d); color: #fff; }
+.priority-6 { background: linear-gradient(135deg, #f093fb, #f5576c); color: #fff; }
+
+/* Floating action effect */
+@keyframes float {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-5px); }
+}
+
+.floating {
+    animation: float 3s ease-in-out infinite;
+}
+
+/* Glow effect for important elements */
+.glow-effect {
+    box-shadow: 0 0 20px rgba(102, 126, 234, 0.4), 0 0 40px rgba(102, 126, 234, 0.2);
+}
+
+/* Live indicator */
+.live-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    background: rgba(0, 255, 136, 0.15);
+    border: 1px solid rgba(0, 255, 136, 0.3);
+    border-radius: 20px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #00ff88;
+}
+
+.live-dot {
+    width: 8px;
+    height: 8px;
+    background: #00ff88;
+    border-radius: 50%;
+    animation: pulse-green 1.5s infinite;
+}
+
+/* Number input arrows fix */
+.stNumberInput button {
+    background: rgba(255, 255, 255, 0.1) !important;
+    border: none !important;
+    color: white !important;
+}
+
+.stNumberInput button:hover {
+    background: rgba(102, 126, 234, 0.3) !important;
+}
+</style>
+"""
 
 # Try to import bcrypt, fall back to hashlib if not available
 try:
@@ -144,8 +676,8 @@ WEBSOCKET_STATUS_FILE = DATA_DIR / "websocket_status.json"
 # Prometheus metrics port
 PROMETHEUS_PORT = 8000
 
-# Instruments list (should match Tradebot.py)
-INSTRUMENTS = ["CRUDEOIL", "NATURALGAS", "GOLD", "SILVER", "NIFTY", "BANKNIFTY"]
+# Instruments list for quick reference (use INSTRUMENTS from instruments.py for full config)
+INSTRUMENTS_LIST = ["CRUDEOIL", "NATURALGAS", "GOLD", "SILVER", "NIFTY", "BANKNIFTY"]
 
 # =============================================================================
 # PROMETHEUS METRICS
@@ -315,20 +847,41 @@ def reset_login_attempts() -> None:
 
 def login_form():
     """Display login form and handle authentication with rate limiting"""
+    st.markdown(MODERN_CSS, unsafe_allow_html=True)
+    
     st.markdown("""
         <style>
         .login-container {
-            max-width: 400px;
-            margin: 100px auto;
-            padding: 40px;
-            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
-            border-radius: 15px;
-            box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+            max-width: 450px;
+            margin: 60px auto;
+            padding: 0;
         }
-        .security-notice {
-            font-size: 0.8em;
-            color: #888;
-            margin-top: 10px;
+        .login-header {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+        .login-header h1 {
+            font-size: 2.5rem !important;
+            margin-bottom: 0.5rem !important;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .login-subtitle {
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 1rem;
+        }
+        .security-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 1rem;
+            background: rgba(56, 239, 125, 0.15);
+            border: 1px solid rgba(56, 239, 125, 0.3);
+            border-radius: 20px;
+            font-size: 0.75rem;
+            color: #38ef7d;
+            margin-top: 1rem;
         }
         </style>
     """, unsafe_allow_html=True)
@@ -336,8 +889,12 @@ def login_form():
     col1, col2, col3 = st.columns([1, 2, 1])
     
     with col2:
-        st.markdown("## 🔐 Trading Dashboard Login")
-        st.markdown("---")
+        st.markdown("""
+            <div class="login-header">
+                <h1>🚀 TradingBot</h1>
+                <p class="login-subtitle">Algo Trading Dashboard</p>
+            </div>
+        """, unsafe_allow_html=True)
         
         # Check rate limit
         is_allowed, lockout_remaining = check_login_rate_limit()
@@ -350,9 +907,13 @@ def login_form():
             return
         
         with st.form("login_form"):
-            username = st.text_input("Username", placeholder="Enter username")
-            password = st.text_input("Password", type="password", placeholder="Enter password")
-            submit = st.form_submit_button("Login", use_container_width=True)
+            st.markdown("#### 🔐 Sign In")
+            username = st.text_input("Username", placeholder="Enter your username")
+            password = st.text_input("Password", type="password", placeholder="Enter your password")
+            
+            col_btn1, col_btn2 = st.columns([3, 1])
+            with col_btn1:
+                submit = st.form_submit_button("Sign In →", use_container_width=True)
             
             if submit:
                 if not username or not password:
@@ -387,11 +948,21 @@ def login_form():
         
         # Security notice
         if BCRYPT_AVAILABLE:
-            st.markdown('<p class="security-notice">🔒 Secured with bcrypt password hashing</p>', 
-                       unsafe_allow_html=True)
+            st.markdown("""
+                <div style="text-align: center; margin-top: 2rem;">
+                    <div class="security-badge">
+                        🔒 Secured with bcrypt encryption
+                    </div>
+                </div>
+            """, unsafe_allow_html=True)
         else:
-            st.markdown('<p class="security-notice">⚠️ Using fallback security (install bcrypt for better protection)</p>', 
-                       unsafe_allow_html=True)
+            st.markdown("""
+                <div style="text-align: center; margin-top: 2rem;">
+                    <div class="security-badge" style="background: rgba(255, 193, 7, 0.15); border-color: rgba(255, 193, 7, 0.3); color: #ffc107;">
+                        ⚠️ Using fallback security
+                    </div>
+                </div>
+            """, unsafe_allow_html=True)
 
 def require_auth(func):
     """Decorator to require authentication"""
@@ -573,8 +1144,10 @@ def load_websocket_status() -> Dict[str, Any]:
 # =============================================================================
 
 def render_websocket_status():
-    """Render WebSocket connection status dashboard"""
-    st.subheader("🔌 WebSocket Status")
+    """Render WebSocket connection status dashboard with modern styling"""
+    st.markdown("""
+        <h2 style="margin-bottom: 1.5rem;">🔌 WebSocket Status</h2>
+    """, unsafe_allow_html=True)
     
     ws_status = load_websocket_status()
     
@@ -584,35 +1157,43 @@ def render_websocket_status():
     is_connected = ws_status.get("connected", False)
     
     with col1:
-        status_icon = "🟢" if is_connected else "🔴"
-        status_text = "Connected" if is_connected else "Disconnected"
-        st.metric(
-            label="Connection Status",
-            value=f"{status_icon} {status_text}"
-        )
+        if is_connected:
+            st.metric(
+                label="🌐 Connection",
+                value="🟢 Connected",
+                delta="Active"
+            )
+        else:
+            st.metric(
+                label="🌐 Connection",
+                value="🔴 Disconnected",
+                delta="Offline",
+                delta_color="inverse"
+            )
         
     with col2:
         latency = ws_status.get("latency_ms", 0)
-        latency_delta = None
         if latency > 0:
             if latency < 50:
-                latency_delta = "Excellent"
+                latency_status = "⚡ Excellent"
             elif latency < 100:
-                latency_delta = "Good"
+                latency_status = "✅ Good"
             elif latency < 250:
-                latency_delta = "Fair"
+                latency_status = "⚠️ Fair"
             else:
-                latency_delta = "Poor"
+                latency_status = "🐢 Slow"
+        else:
+            latency_status = "—"
         st.metric(
-            label="Latency",
+            label="⚡ Latency",
             value=f"{latency:.0f} ms" if latency else "N/A",
-            delta=latency_delta
+            delta=latency_status
         )
         
     with col3:
         messages = ws_status.get("messages_received", 0)
         st.metric(
-            label="Messages Received",
+            label="📨 Messages",
             value=f"{messages:,}"
         )
         
@@ -620,10 +1201,10 @@ def render_websocket_status():
         errors = ws_status.get("errors", 0)
         reconnects = ws_status.get("reconnect_count", 0)
         st.metric(
-            label="Errors / Reconnects",
+            label="⚠️ Errors / Reconnects",
             value=f"{errors} / {reconnects}",
-            delta="⚠️" if errors > 0 else None,
-            delta_color="inverse"
+            delta="Issues detected" if errors > 0 else "Stable",
+            delta_color="inverse" if errors > 0 else "normal"
         )
     
     # Last message time
@@ -634,11 +1215,20 @@ def render_websocket_status():
             time_ago = datetime.now() - last_msg_dt
             if time_ago.total_seconds() < 60:
                 time_str = f"{int(time_ago.total_seconds())}s ago"
+                time_color = "#38ef7d"
             elif time_ago.total_seconds() < 3600:
                 time_str = f"{int(time_ago.total_seconds() / 60)}m ago"
+                time_color = "#ffc107"
             else:
                 time_str = f"{int(time_ago.total_seconds() / 3600)}h ago"
-            st.caption(f"📡 Last message: {time_str}")
+                time_color = "#ff6b6b"
+            
+            st.markdown(f"""
+                <div style="background: rgba(255,255,255,0.05); border-radius: 12px; padding: 1rem; margin: 1rem 0;">
+                    <span style="color: rgba(255,255,255,0.6);">📡 Last Message:</span>
+                    <span style="color: {time_color}; font-weight: 600; margin-left: 0.5rem;">{time_str}</span>
+                </div>
+            """, unsafe_allow_html=True)
         except:
             pass
     
@@ -648,19 +1238,36 @@ def render_websocket_status():
         last_prices = ws_status.get("last_prices", {})
         
         if last_prices:
-            price_df = pd.DataFrame([
-                {
-                    "Symbol": symbol,
-                    "LTP": f"₹{price.get('ltp', 0):,.2f}",
-                    "Change": f"{price.get('change_pct', 0):+.2f}%",
-                    "Volume": f"{price.get('volume', 0):,}",
-                    "Updated": price.get('timestamp', 'N/A')
-                }
-                for symbol, price in last_prices.items()
-            ])
-            st.dataframe(price_df, use_container_width=True, hide_index=True)
+            # Create a styled table
+            for symbol, price in last_prices.items():
+                ltp = price.get('ltp', 0)
+                change = price.get('change_pct', 0)
+                change_color = "#38ef7d" if change >= 0 else "#ff6b6b"
+                change_icon = "📈" if change >= 0 else "📉"
+                
+                st.markdown(f"""
+                    <div style="display: flex; justify-content: space-between; align-items: center;
+                                background: rgba(255,255,255,0.05); border-radius: 12px; padding: 1rem; margin: 0.5rem 0;">
+                        <div>
+                            <span style="font-weight: 600; color: white; font-size: 1.1rem;">{symbol}</span>
+                        </div>
+                        <div style="text-align: right;">
+                            <span style="font-weight: 700; color: white; font-size: 1.2rem;">₹{ltp:,.2f}</span>
+                            <span style="color: {change_color}; margin-left: 1rem; font-weight: 600;">
+                                {change_icon} {change:+.2f}%
+                            </span>
+                        </div>
+                    </div>
+                """, unsafe_allow_html=True)
         else:
-            st.info("No live price data available. WebSocket may be disconnected.")
+            st.markdown("""
+                <div style="background: rgba(255,255,255,0.05); border-radius: 12px; padding: 2rem; text-align: center;">
+                    <span style="font-size: 2rem;">📡</span>
+                    <p style="color: rgba(255,255,255,0.6); margin-top: 1rem;">
+                        No live price data available. WebSocket may be disconnected.
+                    </p>
+                </div>
+            """, unsafe_allow_html=True)
     
     # Update Prometheus metrics
     if PROMETHEUS_AVAILABLE:
@@ -712,30 +1319,42 @@ scrape_configs:
 # =============================================================================
 
 def render_live_status():
-    """Render live trading status section"""
-    st.subheader("📡 Live Trading Status")
+    """Render live trading status section with modern UI"""
     
     state_data = load_trade_state()
     daily_data = load_daily_pnl()
+    
+    # Modern dashboard header
+    is_active = state_data.get("status", False)
+    st.markdown(f"""
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+            <div>
+                <h2 style="margin: 0; color: white;">📡 Live Trading Status</h2>
+            </div>
+            <div class="live-indicator">
+                <span class="live-dot"></span>
+                {"TRADING ACTIVE" if is_active else "SCANNING MARKETS"}
+            </div>
+        </div>
+    """, unsafe_allow_html=True)
     
     col1, col2, col3, col4 = st.columns(4)
     
     # Bot Status
     with col1:
-        is_active = state_data.get("status", False)
         instrument = state_data.get("instrument", "N/A")
         
         if is_active:
             st.metric(
-                label="Bot Status",
-                value="🟢 ACTIVE TRADE",
-                delta=instrument
+                label="🤖 Bot Status",
+                value="🟢 ACTIVE",
+                delta=f"Trading {instrument}"
             )
         else:
             st.metric(
-                label="Bot Status",
-                value="💤 Scanning...",
-                delta="Waiting for signal"
+                label="🤖 Bot Status",
+                value="💤 Scanning",
+                delta="Awaiting signal"
             )
     
     # Current Trade Info
@@ -743,19 +1362,21 @@ def render_live_status():
         if is_active:
             trade_type = state_data.get("type", "N/A")
             entry = state_data.get("entry", 0)
+            emoji = "📈" if trade_type == "BUY" else "📉"
             st.metric(
-                label="Trade Type",
+                label=f"{emoji} Trade Type",
                 value=trade_type,
                 delta=f"Entry: ₹{entry:,.2f}" if entry else None
             )
         else:
-            st.metric(label="Trade Type", value="N/A")
+            st.metric(label="📊 Trade Type", value="—")
     
     # Daily P&L
     with col3:
         pnl = daily_data.get("pnl", 0)
+        pnl_emoji = "💰" if pnl >= 0 else "📉"
         st.metric(
-            label="Day's P&L",
+            label=f"{pnl_emoji} Day's P&L",
             value=f"₹{pnl:,.2f}",
             delta=f"{'Profit' if pnl >= 0 else 'Loss'}",
             delta_color="normal" if pnl >= 0 else "inverse"
@@ -777,9 +1398,9 @@ def render_live_status():
         win_rate = (wins / trades * 100) if trades > 0 else 0
         
         st.metric(
-            label="Today's Stats",
+            label="📊 Today's Stats",
             value=f"{trades} Trades",
-            delta=f"{wins}W / {losses}L ({win_rate:.0f}%)"
+            delta=f"W:{wins} L:{losses} ({win_rate:.0f}%)"
         )
         
         # Update Prometheus
@@ -791,13 +1412,22 @@ def render_live_status():
                 pass
 
 def render_performance_analytics():
-    """Render performance analytics section"""
-    st.subheader("📊 Performance Analytics")
+    """Render performance analytics section with modern styling"""
+    st.markdown("""
+        <h2 style="margin-bottom: 1.5rem;">📊 Performance Analytics</h2>
+    """, unsafe_allow_html=True)
     
     history_data = load_trade_history()
     
     if not history_data:
-        st.info("📭 No trade history found yet. Start the bot to generate data.")
+        st.markdown("""
+            <div style="background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%);
+                        border: 1px solid rgba(102, 126, 234, 0.2); border-radius: 16px; padding: 3rem; text-align: center;">
+                <span style="font-size: 3rem;">📭</span>
+                <h3 style="margin: 1rem 0 0.5rem 0;">No Trade History Yet</h3>
+                <p style="color: rgba(255,255,255,0.6);">Start the trading bot to generate data and see your performance here.</p>
+            </div>
+        """, unsafe_allow_html=True)
         return
     
     df = pd.DataFrame(history_data)
@@ -862,7 +1492,7 @@ def render_performance_analytics():
         avg_loss = df_sorted[df_sorted['pnl'] <= 0]['pnl'].mean() if loss_count > 0 else 0
         st.metric("Avg Loss", f"₹{avg_loss:,.2f}")
     
-    # Charts
+    # Charts with modern styling
     chart_col1, chart_col2 = st.columns(2)
     
     with chart_col1:
@@ -870,37 +1500,93 @@ def render_performance_analytics():
             df_sorted,
             x='exit_time',
             y='cumulative_pnl',
-            title='Equity Curve (Cumulative P&L)',
+            title='📈 Equity Curve',
             markers=True
         )
-        fig_equity.update_traces(line_color='#00CC96')
+        fig_equity.update_traces(
+            line=dict(color='#667eea', width=3),
+            marker=dict(size=8, color='#764ba2'),
+            fill='tozeroy',
+            fillcolor='rgba(102, 126, 234, 0.1)'
+        )
         fig_equity.update_layout(
             xaxis_title="Date",
             yaxis_title="Cumulative P&L (₹)",
-            hovermode='x unified'
+            hovermode='x unified',
+            paper_bgcolor='rgba(0,0,0,0)',
+            plot_bgcolor='rgba(0,0,0,0)',
+            font=dict(color='rgba(255,255,255,0.8)'),
+            xaxis=dict(
+                gridcolor='rgba(255,255,255,0.1)',
+                zerolinecolor='rgba(255,255,255,0.2)'
+            ),
+            yaxis=dict(
+                gridcolor='rgba(255,255,255,0.1)',
+                zerolinecolor='rgba(255,255,255,0.2)'
+            ),
+            title=dict(font=dict(size=16))
         )
         st.plotly_chart(fig_equity, use_container_width=True)
     
     with chart_col2:
-        fig_pie = px.pie(
-            names=['Wins', 'Losses'],
+        fig_pie = go.Figure(data=[go.Pie(
+            labels=['Wins', 'Losses'],
             values=[win_count, loss_count],
-            title='Win/Loss Distribution',
-            color_discrete_sequence=['#00CC96', '#EF553B']
+            hole=0.6,
+            marker=dict(
+                colors=['#38ef7d', '#ff6b6b'],
+                line=dict(color='rgba(255,255,255,0.2)', width=2)
+            ),
+            textinfo='percent+label',
+            textfont=dict(size=14, color='white')
+        )])
+        fig_pie.update_layout(
+            title='🎯 Win/Loss Distribution',
+            paper_bgcolor='rgba(0,0,0,0)',
+            plot_bgcolor='rgba(0,0,0,0)',
+            font=dict(color='rgba(255,255,255,0.8)'),
+            showlegend=False,
+            annotations=[dict(
+                text=f'{win_rate:.0f}%<br>Win Rate',
+                x=0.5, y=0.5,
+                font_size=18,
+                font_color='white',
+                showarrow=False
+            )],
+            title_font_size=16
         )
-        fig_pie.update_traces(textposition='inside', textinfo='percent+label')
         st.plotly_chart(fig_pie, use_container_width=True)
     
     # P&L by instrument chart (if multiple instruments)
     if 'instrument' in df.columns and len(df['instrument'].unique()) > 1:
         pnl_by_instrument = df.groupby('instrument')['pnl'].sum().reset_index()
-        fig_bar = px.bar(
-            pnl_by_instrument,
-            x='instrument',
-            y='pnl',
-            title='P&L by Instrument',
-            color='pnl',
-            color_continuous_scale=['#EF553B', '#FFFF00', '#00CC96']
+        pnl_by_instrument['color'] = pnl_by_instrument['pnl'].apply(
+            lambda x: '#38ef7d' if x >= 0 else '#ff6b6b'
+        )
+        
+        fig_bar = go.Figure(data=[
+            go.Bar(
+                x=pnl_by_instrument['instrument'],
+                y=pnl_by_instrument['pnl'],
+                marker=dict(
+                    color=pnl_by_instrument['color'],
+                    line=dict(color='rgba(255,255,255,0.2)', width=1)
+                ),
+                text=[f'₹{v:,.0f}' for v in pnl_by_instrument['pnl']],
+                textposition='outside',
+                textfont=dict(color='white')
+            )
+        ])
+        fig_bar.update_layout(
+            title='💹 P&L by Instrument',
+            xaxis_title='Instrument',
+            yaxis_title='P&L (₹)',
+            paper_bgcolor='rgba(0,0,0,0)',
+            plot_bgcolor='rgba(0,0,0,0)',
+            font=dict(color='rgba(255,255,255,0.8)'),
+            xaxis=dict(gridcolor='rgba(255,255,255,0.1)'),
+            yaxis=dict(gridcolor='rgba(255,255,255,0.1)'),
+            title_font_size=16
         )
         st.plotly_chart(fig_bar, use_container_width=True)
 
@@ -1290,24 +1976,24 @@ def render_manual_trade():
 # =============================================================================
 
 def render_settings_page():
-    """Render settings page for live configuration updates"""
-    st.subheader("⚙️ Bot Settings & Configuration")
-    
-    st.info("""
-    **Live Configuration Updates**  
-    Update trading parameters without restarting the bot.
-    Changes are saved to `trading_config.json` and take effect immediately.
-    """)
+    """Render settings page for live configuration updates with modern UI"""
+    st.markdown("""
+        <h2 style="margin-bottom: 0.5rem;">⚙️ Bot Settings & Configuration</h2>
+        <p style="color: rgba(255, 255, 255, 0.6); margin-bottom: 2rem;">
+            Configure trading parameters in real-time. Changes take effect immediately.
+        </p>
+    """, unsafe_allow_html=True)
     
     # Load current config
     current_config = load_trading_config()
     
     # Create tabs for different settings categories
-    tab1, tab2, tab3, tab4 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5 = st.tabs([
         "💰 Risk Management",
         "📊 Signal Settings", 
-        "⏱️ Timing & Cooldowns",
-        "📁 View Config File"
+        "🎯 Instruments",
+        "⏱️ Timing",
+        "📁 Config File"
     ])
     
     # Track if any changes were made
@@ -1316,25 +2002,33 @@ def render_settings_page():
     
     # === TAB 1: Risk Management ===
     with tab1:
-        st.markdown("### 💰 Risk Management Settings")
+        st.markdown("""
+            <div style="background: linear-gradient(135deg, rgba(235, 51, 73, 0.1) 0%, rgba(244, 92, 67, 0.1) 100%); 
+                        border: 1px solid rgba(235, 51, 73, 0.2); border-radius: 16px; padding: 1.5rem; margin-bottom: 1.5rem;">
+                <h4 style="margin: 0 0 0.5rem 0; color: #ff6b6b;">💰 Risk Management Settings</h4>
+                <p style="margin: 0; color: rgba(255, 255, 255, 0.6); font-size: 0.9rem;">
+                    Control your exposure and protect your capital
+                </p>
+            </div>
+        """, unsafe_allow_html=True)
         
         col1, col2 = st.columns(2)
         
         with col1:
             new_max_daily_loss = st.number_input(
-                "Maximum Daily Loss (₹)",
+                "🛡️ Maximum Daily Loss (₹)",
                 min_value=1000,
                 max_value=100000,
                 value=int(current_config.get("MAX_DAILY_LOSS", 5000)),
                 step=500,
-                help="Maximum loss allowed per day before trading stops"
+                help="Trading stops when this loss limit is reached"
             )
             if new_max_daily_loss != current_config.get("MAX_DAILY_LOSS"):
                 new_config["MAX_DAILY_LOSS"] = new_max_daily_loss
                 config_changed = True
             
             new_max_trades = st.number_input(
-                "Maximum Trades Per Day",
+                "📊 Maximum Trades Per Day",
                 min_value=1,
                 max_value=20,
                 value=int(current_config.get("MAX_TRADES_PER_DAY", 5)),
@@ -1347,51 +2041,63 @@ def render_settings_page():
         
         with col2:
             new_limit_buffer = st.number_input(
-                "Limit Order Buffer (%)",
+                "📈 Limit Order Buffer (%)",
                 min_value=0.001,
                 max_value=0.05,
                 value=float(current_config.get("LIMIT_ORDER_BUFFER", 0.01)),
                 step=0.005,
                 format="%.3f",
-                help="Buffer percentage for limit orders (e.g., 0.01 = 1%)"
+                help="Buffer percentage for limit orders"
             )
             if new_limit_buffer != current_config.get("LIMIT_ORDER_BUFFER"):
                 new_config["LIMIT_ORDER_BUFFER"] = new_limit_buffer
                 config_changed = True
             
             new_squareoff_buffer = st.number_input(
-                "Auto Square-Off Buffer (minutes)",
+                "⏰ Auto Square-Off Buffer (min)",
                 min_value=1,
                 max_value=30,
                 value=int(current_config.get("AUTO_SQUARE_OFF_BUFFER", 5)),
                 step=1,
-                help="Minutes before market close to auto square-off positions"
+                help="Minutes before market close to exit positions"
             )
             if new_squareoff_buffer != current_config.get("AUTO_SQUARE_OFF_BUFFER"):
                 new_config["AUTO_SQUARE_OFF_BUFFER"] = new_squareoff_buffer
                 config_changed = True
         
-        # Risk Summary
-        st.divider()
-        st.markdown("#### 📊 Current Risk Limits")
-        risk_col1, risk_col2, risk_col3 = st.columns(3)
+        # Risk Summary Cards
+        st.markdown("<br>", unsafe_allow_html=True)
+        daily_data = load_daily_pnl()
+        remaining_loss = new_config.get('MAX_DAILY_LOSS', 5000) + daily_data.get('pnl', 0)
+        used_pct = (1 - remaining_loss / new_config.get('MAX_DAILY_LOSS', 5000)) * 100 if new_config.get('MAX_DAILY_LOSS', 5000) > 0 else 0
+        
+        risk_col1, risk_col2, risk_col3, risk_col4 = st.columns(4)
         
         with risk_col1:
             st.metric("Max Daily Loss", f"₹{new_config.get('MAX_DAILY_LOSS', 5000):,}")
         with risk_col2:
             st.metric("Max Trades/Day", new_config.get('MAX_TRADES_PER_DAY', 5))
         with risk_col3:
-            daily_data = load_daily_pnl()
-            remaining_loss = new_config.get('MAX_DAILY_LOSS', 5000) + daily_data.get('pnl', 0)
-            st.metric("Remaining Loss Budget", f"₹{max(0, remaining_loss):,.2f}")
+            st.metric("Remaining Budget", f"₹{max(0, remaining_loss):,.0f}")
+        with risk_col4:
+            st.metric("Risk Used Today", f"{max(0, min(100, used_pct)):.1f}%")
     
     # === TAB 2: Signal Settings ===
     with tab2:
-        st.markdown("### 📊 Signal Strength Settings")
+        st.markdown("""
+            <div style="background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%); 
+                        border: 1px solid rgba(102, 126, 234, 0.2); border-radius: 16px; padding: 1.5rem; margin-bottom: 1.5rem;">
+                <h4 style="margin: 0 0 0.5rem 0; color: #667eea;">📊 Signal Strength Settings</h4>
+                <p style="margin: 0; color: rgba(255, 255, 255, 0.6); font-size: 0.9rem;">
+                    Configure technical indicators for signal generation
+                </p>
+            </div>
+        """, unsafe_allow_html=True)
         
         col1, col2 = st.columns(2)
         
         with col1:
+            st.markdown("##### 📈 RSI Thresholds")
             new_rsi_bullish = st.slider(
                 "RSI Bullish Threshold",
                 min_value=50,
@@ -1415,63 +2121,272 @@ def render_settings_page():
                 config_changed = True
         
         with col2:
+            st.markdown("##### 📊 Volume Settings")
             new_volume_mult = st.slider(
                 "Volume Multiplier",
                 min_value=1.0,
                 max_value=3.0,
                 value=float(current_config.get("VOLUME_MULTIPLIER", 1.2)),
                 step=0.1,
-                help="Volume must be this multiple of average for signal confirmation"
+                help="Volume must be this multiple of average"
             )
             if new_volume_mult != current_config.get("VOLUME_MULTIPLIER"):
                 new_config["VOLUME_MULTIPLIER"] = new_volume_mult
                 config_changed = True
             
-            # Visual indicator for RSI zones
-            st.markdown("#### RSI Zones")
-            st.progress(new_rsi_bearish / 100, text=f"Bearish Zone: 0-{new_rsi_bearish}")
-            st.progress((new_rsi_bullish - new_rsi_bearish) / 100, text=f"Neutral: {new_rsi_bearish}-{new_rsi_bullish}")
-            st.progress((100 - new_rsi_bullish) / 100, text=f"Bullish Zone: {new_rsi_bullish}-100")
+            # Visual RSI Zone indicator
+            st.markdown("##### 🎯 RSI Zones Visualization")
+            
+            # Create a visual representation
+            st.markdown(f"""
+                <div style="background: linear-gradient(90deg, 
+                    rgba(235, 51, 73, 0.3) 0%, 
+                    rgba(235, 51, 73, 0.3) {new_rsi_bearish}%, 
+                    rgba(255, 255, 255, 0.1) {new_rsi_bearish}%, 
+                    rgba(255, 255, 255, 0.1) {new_rsi_bullish}%, 
+                    rgba(56, 239, 125, 0.3) {new_rsi_bullish}%, 
+                    rgba(56, 239, 125, 0.3) 100%);
+                    border-radius: 10px; padding: 1rem; margin-top: 0.5rem;">
+                    <div style="display: flex; justify-content: space-between; font-size: 0.8rem;">
+                        <span style="color: #ff6b6b;">📉 Bearish (0-{new_rsi_bearish})</span>
+                        <span style="color: rgba(255,255,255,0.6);">Neutral</span>
+                        <span style="color: #38ef7d;">📈 Bullish ({new_rsi_bullish}-100)</span>
+                    </div>
+                </div>
+            """, unsafe_allow_html=True)
     
-    # === TAB 3: Timing & Cooldowns ===
+    # === TAB 3: Instruments Configuration ===
     with tab3:
-        st.markdown("### ⏱️ Timing & Cooldown Settings")
+        st.markdown("""
+            <div style="background: linear-gradient(135deg, rgba(17, 153, 142, 0.1) 0%, rgba(56, 239, 125, 0.1) 100%); 
+                        border: 1px solid rgba(56, 239, 125, 0.2); border-radius: 16px; padding: 1.5rem; margin-bottom: 1.5rem;">
+                <h4 style="margin: 0 0 0.5rem 0; color: #38ef7d;">🎯 Instrument Configuration</h4>
+                <p style="margin: 0; color: rgba(255, 255, 255, 0.6); font-size: 0.9rem;">
+                    Enable/disable instruments and set scanning priority
+                </p>
+            </div>
+        """, unsafe_allow_html=True)
+        
+        # Load current instrument settings
+        enabled_instruments = current_config.get("ENABLED_INSTRUMENTS", list(INSTRUMENTS.keys()))
+        instrument_priority = current_config.get("INSTRUMENT_PRIORITY", {
+            "CRUDEOIL": 1, "GOLD": 2, "SILVER": 3, "NATURALGAS": 4, "NIFTY": 5, "BANKNIFTY": 6
+        })
+        
+        st.markdown("##### 🔘 Enable/Disable Instruments")
+        st.caption("Toggle which instruments the bot should scan and trade")
+        
+        # Create two columns for instruments
+        inst_col1, inst_col2 = st.columns(2)
+        instruments_list = list(INSTRUMENTS.keys())
+        
+        new_enabled = []
+        
+        for i, inst_key in enumerate(instruments_list):
+            inst_data = INSTRUMENTS[inst_key]
+            priority = instrument_priority.get(inst_key, i + 1)
+            
+            col = inst_col1 if i % 2 == 0 else inst_col2
+            
+            with col:
+                # Styled instrument toggle card
+                is_enabled = st.checkbox(
+                    f"**{inst_data.get('name', inst_key)}**",
+                    value=inst_key in enabled_instruments,
+                    key=f"inst_toggle_{inst_key}",
+                    help=f"Lot Size: {inst_data.get('lot_size')} | Exchange: {inst_data.get('exchange_segment_str')}"
+                )
+                
+                if is_enabled:
+                    new_enabled.append(inst_key)
+                    
+                    # Show priority selector when enabled
+                    st.markdown(f"""
+                        <div style="font-size: 0.8rem; color: rgba(255,255,255,0.5); margin-top: -10px; margin-bottom: 10px; padding-left: 2rem;">
+                            📊 {inst_data.get('exchange_segment_str')} | Lot: {inst_data.get('lot_size')}
+                        </div>
+                    """, unsafe_allow_html=True)
+        
+        # Check if enabled instruments changed
+        if set(new_enabled) != set(enabled_instruments):
+            new_config["ENABLED_INSTRUMENTS"] = new_enabled
+            config_changed = True
+        
+        st.divider()
+        
+        # Priority Settings
+        st.markdown("##### 🏆 Instrument Priority")
+        st.caption("Set priority for instrument selection when multiple signals occur (1 = highest priority)")
+        
+        new_priority = {}
+        
+        # Only show priority for enabled instruments
+        if new_enabled:
+            priority_cols = st.columns(min(len(new_enabled), 3))
+            
+            for i, inst_key in enumerate(new_enabled):
+                col_idx = i % 3
+                with priority_cols[col_idx]:
+                    current_priority = instrument_priority.get(inst_key, i + 1)
+                    
+                    # Priority badge
+                    badge_class = f"priority-{min(current_priority, 6)}"
+                    st.markdown(f"""
+                        <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
+                            <span class="priority-badge {badge_class}">{current_priority}</span>
+                            <span style="font-weight: 600; color: white;">{INSTRUMENTS[inst_key].get('name', inst_key)}</span>
+                        </div>
+                    """, unsafe_allow_html=True)
+                    
+                    new_pri = st.number_input(
+                        f"Priority",
+                        min_value=1,
+                        max_value=len(INSTRUMENTS),
+                        value=current_priority,
+                        key=f"priority_{inst_key}",
+                        label_visibility="collapsed"
+                    )
+                    new_priority[inst_key] = new_pri
+            
+            # Check if priority changed
+            if new_priority != instrument_priority:
+                new_config["INSTRUMENT_PRIORITY"] = new_priority
+                config_changed = True
+        else:
+            st.warning("⚠️ No instruments enabled. Enable at least one instrument above.")
+        
+        # Per-instrument signal settings
+        st.divider()
+        st.markdown("##### ⚙️ Per-Instrument Signal Settings")
+        st.caption("Override global signal settings for specific instruments")
+        
+        # Get current per-instrument settings
+        per_inst_settings = current_config.get("PER_INSTRUMENT_SETTINGS", {})
+        
+        # Expander for each enabled instrument
+        for inst_key in new_enabled:
+            inst_data = INSTRUMENTS[inst_key]
+            strategy_params = inst_data.get("strategy_params", {})
+            
+            with st.expander(f"🔧 {inst_data.get('name', inst_key)} Settings", expanded=False):
+                inst_settings = per_inst_settings.get(inst_key, {})
+                
+                inst_col1, inst_col2 = st.columns(2)
+                
+                with inst_col1:
+                    use_custom = st.checkbox(
+                        "Use custom settings for this instrument",
+                        value=inst_settings.get("use_custom", False),
+                        key=f"custom_{inst_key}"
+                    )
+                    
+                    if use_custom:
+                        custom_rsi_bull = st.slider(
+                            "RSI Bullish",
+                            50, 80,
+                            value=inst_settings.get("rsi_bullish", strategy_params.get("rsi_bullish_threshold", 60)),
+                            key=f"rsi_bull_{inst_key}"
+                        )
+                        custom_rsi_bear = st.slider(
+                            "RSI Bearish",
+                            20, 50,
+                            value=inst_settings.get("rsi_bearish", strategy_params.get("rsi_bearish_threshold", 40)),
+                            key=f"rsi_bear_{inst_key}"
+                        )
+                
+                with inst_col2:
+                    if use_custom:
+                        custom_vol_mult = st.slider(
+                            "Volume Multiplier",
+                            1.0, 3.0,
+                            value=float(inst_settings.get("volume_multiplier", strategy_params.get("volume_multiplier", 1.2))),
+                            step=0.1,
+                            key=f"vol_{inst_key}"
+                        )
+                        
+                        # Save per-instrument settings
+                        new_inst_settings = {
+                            "use_custom": True,
+                            "rsi_bullish": custom_rsi_bull,
+                            "rsi_bearish": custom_rsi_bear,
+                            "volume_multiplier": custom_vol_mult
+                        }
+                        
+                        if new_inst_settings != inst_settings:
+                            if "PER_INSTRUMENT_SETTINGS" not in new_config:
+                                new_config["PER_INSTRUMENT_SETTINGS"] = {}
+                            new_config["PER_INSTRUMENT_SETTINGS"][inst_key] = new_inst_settings
+                            config_changed = True
+                    else:
+                        st.info(f"Using global settings\nRSI: {new_rsi_bearish}-{new_rsi_bullish}\nVolume: {new_volume_mult}x")
+                        
+                        # Remove custom settings if disabled
+                        if inst_key in per_inst_settings:
+                            if "PER_INSTRUMENT_SETTINGS" not in new_config:
+                                new_config["PER_INSTRUMENT_SETTINGS"] = {}
+                            new_config["PER_INSTRUMENT_SETTINGS"][inst_key] = {"use_custom": False}
+                            config_changed = True
+    
+    # === TAB 4: Timing & Cooldowns ===
+    with tab4:
+        st.markdown("""
+            <div style="background: linear-gradient(135deg, rgba(240, 147, 251, 0.1) 0%, rgba(245, 87, 108, 0.1) 100%); 
+                        border: 1px solid rgba(240, 147, 251, 0.2); border-radius: 16px; padding: 1.5rem; margin-bottom: 1.5rem;">
+                <h4 style="margin: 0 0 0.5rem 0; color: #f093fb;">⏱️ Timing & Cooldown Settings</h4>
+                <p style="margin: 0; color: rgba(255, 255, 255, 0.6); font-size: 0.9rem;">
+                    Configure waiting periods between trades
+                </p>
+            </div>
+        """, unsafe_allow_html=True)
         
         col1, col2 = st.columns(2)
         
         with col1:
             new_loss_cooldown = st.number_input(
-                "Cooldown After Loss (seconds)",
+                "⏸️ Cooldown After Loss (seconds)",
                 min_value=60,
                 max_value=1800,
                 value=int(current_config.get("COOLDOWN_AFTER_LOSS", 300)),
                 step=60,
-                help="Wait time after a losing trade before taking new trades"
+                help="Wait time after a losing trade"
             )
             if new_loss_cooldown != current_config.get("COOLDOWN_AFTER_LOSS"):
                 new_config["COOLDOWN_AFTER_LOSS"] = new_loss_cooldown
                 config_changed = True
             
-            st.caption(f"= {new_loss_cooldown // 60} minutes {new_loss_cooldown % 60} seconds")
+            # Visual display
+            mins = new_loss_cooldown // 60
+            secs = new_loss_cooldown % 60
+            st.markdown(f"""
+                <div style="background: rgba(255,255,255,0.05); border-radius: 10px; padding: 0.75rem; text-align: center;">
+                    <span style="font-size: 1.5rem; font-weight: 700; color: #f093fb;">{mins}m {secs}s</span>
+                </div>
+            """, unsafe_allow_html=True)
         
         with col2:
             new_signal_cooldown = st.number_input(
-                "Signal Cooldown (seconds)",
+                "🔄 Signal Cooldown (seconds)",
                 min_value=300,
                 max_value=3600,
                 value=int(current_config.get("SIGNAL_COOLDOWN", 900)),
                 step=60,
-                help="Minimum time between signals in the same direction"
+                help="Minimum time between signals in same direction"
             )
             if new_signal_cooldown != current_config.get("SIGNAL_COOLDOWN"):
                 new_config["SIGNAL_COOLDOWN"] = new_signal_cooldown
                 config_changed = True
             
-            st.caption(f"= {new_signal_cooldown // 60} minutes {new_signal_cooldown % 60} seconds")
+            mins2 = new_signal_cooldown // 60
+            secs2 = new_signal_cooldown % 60
+            st.markdown(f"""
+                <div style="background: rgba(255,255,255,0.05); border-radius: 10px; padding: 0.75rem; text-align: center;">
+                    <span style="font-size: 1.5rem; font-weight: 700; color: #667eea;">{mins2}m {secs2}s</span>
+                </div>
+            """, unsafe_allow_html=True)
     
-    # === TAB 4: View Config File ===
-    with tab4:
-        st.markdown("### 📁 Current Configuration File")
+    # === TAB 5: View Config File ===
+    with tab5:
+        st.markdown("##### 📁 Current Configuration File")
         
         if TRADING_CONFIG_FILE.exists():
             with open(TRADING_CONFIG_FILE, 'r') as f:
@@ -1481,13 +2396,15 @@ def render_settings_page():
             st.warning("No trading_config.json file found. Using default values.")
             st.code(json.dumps(current_config, indent=2), language="json")
         
-        # Download button
-        st.download_button(
-            "📥 Download Config",
-            data=json.dumps(new_config, indent=2),
-            file_name="trading_config.json",
-            mime="application/json"
-        )
+        col_dl1, col_dl2 = st.columns(2)
+        with col_dl1:
+            st.download_button(
+                "📥 Download Config",
+                data=json.dumps(new_config, indent=2),
+                file_name="trading_config.json",
+                mime="application/json",
+                use_container_width=True
+            )
     
     # === Save Button ===
     st.divider()
@@ -1560,15 +2477,18 @@ def auto_refresh_data():
 # =============================================================================
 
 def main():
-    """Main dashboard application"""
+    """Main dashboard application with modern UI"""
     
-    # Page Config
+    # Page Config - Modern dark theme
     st.set_page_config(
-        page_title="Algo Trading Dashboard",
-        page_icon="📈",
+        page_title="TradingBot Dashboard",
+        page_icon="🚀",
         layout="wide",
         initial_sidebar_state="expanded"
     )
+    
+    # Apply modern CSS styling
+    st.markdown(MODERN_CSS, unsafe_allow_html=True)
     
     # Start Prometheus server
     start_prometheus_server()
@@ -1578,25 +2498,61 @@ def main():
         login_form()
         return
     
-    # Title with logout
-    col_title, col_logout = st.columns([4, 1])
+    # Modern header with gradient title
+    col_title, col_status, col_logout = st.columns([3, 1, 1])
+    
     with col_title:
-        st.title("🤖 Algo Trading Live Dashboard")
+        st.markdown("""
+            <h1 style="margin-bottom: 0;">🚀 TradingBot</h1>
+            <p style="color: rgba(255, 255, 255, 0.6); margin-top: 0.25rem;">
+                Algorithmic Trading Dashboard
+            </p>
+        """, unsafe_allow_html=True)
+    
+    with col_status:
+        # Live status indicator
+        state_data = load_trade_state()
+        is_active = state_data.get("status", False)
+        st.markdown(f"""
+            <div style="text-align: right; padding-top: 1rem;">
+                <div class="live-indicator" style="display: inline-flex; 
+                    background: {'rgba(0, 255, 136, 0.15)' if is_active else 'rgba(255, 193, 7, 0.15)'}; 
+                    border-color: {'rgba(0, 255, 136, 0.3)' if is_active else 'rgba(255, 193, 7, 0.3)'};
+                    color: {'#00ff88' if is_active else '#ffc107'};">
+                    <span class="live-dot" style="background: {'#00ff88' if is_active else '#ffc107'};"></span>
+                    {"LIVE" if is_active else "SCANNING"}
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
+    
     with col_logout:
+        st.markdown("""
+            <div style="text-align: right; padding-top: 0.5rem;">
+        """, unsafe_allow_html=True)
         st.caption(f"👤 {st.session_state.get('username', 'User')}")
         if st.button("🚪 Logout", use_container_width=True):
             st.session_state.authenticated = False
             st.session_state.username = None
             st.rerun()
+        st.markdown("</div>", unsafe_allow_html=True)
     
-    # Sidebar
-    st.sidebar.header("⚙️ Configuration")
+    # Modern Sidebar
+    st.sidebar.markdown("""
+        <div style="text-align: center; padding: 1rem 0; margin-bottom: 1rem;">
+            <span style="font-size: 2rem;">🤖</span>
+            <h3 style="margin: 0.5rem 0 0 0; font-size: 1.2rem;">Control Panel</h3>
+        </div>
+    """, unsafe_allow_html=True)
     
     # ==========================================================================
     # EMERGENCY PANIC BUTTON - Always visible at top of sidebar
     # ==========================================================================
-    st.sidebar.markdown("---")
-    st.sidebar.markdown("### 🚨 EMERGENCY CONTROLS")
+    st.sidebar.markdown("""
+        <div style="background: linear-gradient(135deg, rgba(235, 51, 73, 0.15) 0%, rgba(244, 92, 67, 0.15) 100%);
+                    border: 1px solid rgba(235, 51, 73, 0.3); border-radius: 12px; padding: 1rem; margin-bottom: 1rem;">
+            <p style="margin: 0 0 0.5rem 0; font-size: 0.8rem; color: rgba(255,255,255,0.6);">EMERGENCY CONTROLS</p>
+        </div>
+    """, unsafe_allow_html=True)
     
     # Panic button with confirmation
     if 'panic_confirm' not in st.session_state:
@@ -1608,51 +2564,66 @@ def main():
             st.rerun()
     else:
         st.sidebar.error("⚠️ CONFIRM EMERGENCY STOP?")
-        st.sidebar.warning("This will:\n- Exit ALL open positions\n- Stop the trading bot\n- Cancel pending orders")
+        st.sidebar.warning("This will exit ALL positions and stop the bot.")
         
         col_yes, col_no = st.sidebar.columns(2)
         with col_yes:
-            if st.button("✅ YES, STOP", type="primary", use_container_width=True):
-                # Execute emergency stop
+            if st.button("✅ YES", type="primary", use_container_width=True):
                 _execute_emergency_stop()
                 st.session_state.panic_confirm = False
                 st.rerun()
         with col_no:
-            if st.button("❌ Cancel", use_container_width=True):
+            if st.button("❌ No", use_container_width=True):
                 st.session_state.panic_confirm = False
                 st.rerun()
     
-    st.sidebar.markdown("---")
+    st.sidebar.divider()
     
-    # Refresh rate selector (for manual refresh)
-    auto_refresh = st.sidebar.checkbox("Auto-refresh (5s)", value=True)
+    # Quick Stats in Sidebar
+    daily_data = load_daily_pnl()
+    pnl = daily_data.get("pnl", 0)
+    pnl_color = "#00ff88" if pnl >= 0 else "#ff6b6b"
     
-    if st.sidebar.button("🔄 Refresh Now"):
+    st.sidebar.markdown(f"""
+        <div style="background: rgba(255,255,255,0.05); border-radius: 12px; padding: 1rem; margin-bottom: 1rem;">
+            <p style="margin: 0; font-size: 0.75rem; color: rgba(255,255,255,0.5);">TODAY'S P&L</p>
+            <p style="margin: 0.5rem 0 0 0; font-size: 1.5rem; font-weight: 700; color: {pnl_color};">
+                ₹{pnl:,.2f}
+            </p>
+        </div>
+    """, unsafe_allow_html=True)
+    
+    # Refresh controls
+    auto_refresh = st.sidebar.checkbox("🔄 Auto-refresh (5s)", value=True)
+    
+    if st.sidebar.button("⟳ Refresh Now", use_container_width=True):
         st.rerun()
     
     st.sidebar.divider()
     
-    # Navigation
+    # Navigation with icons
+    st.sidebar.markdown("##### Navigation")
     page = st.sidebar.radio(
         "Navigation",
         ["📊 Dashboard", "🎯 Manual Trade", "⚙️ Settings", "🔌 WebSocket", "📈 Metrics", "📝 Trade Log"],
-        index=0
+        index=0,
+        label_visibility="collapsed"
     )
     
     st.sidebar.divider()
     
-    # File status indicators
-    st.sidebar.markdown("**📁 Data Files:**")
+    # System Status
+    st.sidebar.markdown("##### System Status")
     
     files_status = {
-        "State": STATE_FILE,
+        "State File": STATE_FILE,
         "Daily P&L": DAILY_PNL_FILE,
-        "History": TRADE_HISTORY_FILE,
+        "Trade History": TRADE_HISTORY_FILE,
         "WebSocket": WEBSOCKET_STATUS_FILE
     }
     
     for name, path in files_status.items():
-        icon = "✅" if path.exists() else "❌"
+        icon = "🟢" if path.exists() else "🔴"
         st.sidebar.caption(f"{icon} {name}")
     
     # Main content based on navigation
@@ -1708,29 +2679,33 @@ def main():
         st.divider()
         
         # Show current metrics values
-        st.subheader("📊 Current Metric Values")
+        st.markdown("### 📊 Current Metric Values")
         
         daily = load_daily_pnl()
         history = load_trade_history()
         state = load_trade_state()
         ws = load_websocket_status()
         
-        metrics_data = {
-            "Daily P&L": f"₹{daily.get('pnl', 0):,.2f}",
-            "Total Trades (Today)": daily.get('trades', 0),
-            "Win Rate (Today)": f"{(daily.get('wins', 0) / max(daily.get('trades', 1), 1) * 100):.1f}%",
-            "Active Trade": "Yes" if state.get('status') else "No",
-            "WebSocket Connected": "Yes" if ws.get('connected') else "No",
-            "WebSocket Latency": f"{ws.get('latency_ms', 0)}ms",
-            "Historical Trades": len(history),
-            "Total Historical P&L": f"₹{sum(t.get('pnl', 0) for t in history):,.2f}"
-        }
+        # Modern metrics grid
+        col1, col2, col3, col4 = st.columns(4)
         
-        col1, col2 = st.columns(2)
+        with col1:
+            st.metric("💰 Daily P&L", f"₹{daily.get('pnl', 0):,.2f}")
+            st.metric("📊 Today's Trades", daily.get('trades', 0))
         
-        for i, (metric, value) in enumerate(metrics_data.items()):
-            with col1 if i % 2 == 0 else col2:
-                st.metric(metric, value)
+        with col2:
+            win_rate = (daily.get('wins', 0) / max(daily.get('trades', 1), 1) * 100)
+            st.metric("🎯 Win Rate", f"{win_rate:.1f}%")
+            st.metric("🤖 Active Trade", "Yes" if state.get('status') else "No")
+        
+        with col3:
+            st.metric("🔌 WebSocket", "Connected" if ws.get('connected') else "Disconnected")
+            st.metric("⚡ Latency", f"{ws.get('latency_ms', 0)}ms")
+        
+        with col4:
+            st.metric("📜 Total Trades", len(history))
+            total_hist_pnl = sum(t.get('pnl', 0) for t in history)
+            st.metric("💎 Total P&L", f"₹{total_hist_pnl:,.2f}")
     
     elif page == "📝 Trade Log":
         render_trade_log()
