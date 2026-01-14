@@ -27,17 +27,17 @@ def mock_dhan_client():
 
 @pytest.fixture
 def sample_instruments():
-    """Sample instrument configuration"""
+    """Sample instrument configuration - V2 API format"""
     return {
         "CRUDEOIL": {
             "name": "CRUDE OIL",
             "exchange_segment_int": 5,
-            "exchange_segment_str": "MCX",
+            "exchange_segment_str": "MCX_COMM",  # V2 API format
             "future_id": "464926",
             "lot_size": 10,
             "strike_step": 50,
             "expiry_date": "2026-01-16",
-            "instrument_type": "FUTURES",
+            "instrument_type": "FUTCOM",  # V2 API format
             "option_type": "OPTFUT",
             "market_start": "09:00",
             "market_end": "23:30",

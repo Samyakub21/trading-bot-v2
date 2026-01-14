@@ -14,12 +14,12 @@ from dataclasses import asdict
 
 @pytest.fixture
 def mock_instruments():
-    """Mock instruments configuration"""
+    """Mock instruments configuration - V2 API format"""
     return {
         "CRUDEOIL": {
             "name": "CRUDE OIL",
             "exchange_segment_int": 5,
-            "exchange_segment_str": "MCX",
+            "exchange_segment_str": "MCX_COMM",  # V2 API format
             "future_id": "464926",
             "lot_size": 10,
         }
@@ -28,7 +28,7 @@ def mock_instruments():
 
 @pytest.fixture
 def active_trade_with_position():
-    """Active trade state with open position"""
+    """Active trade state with open position - V2 format"""
     return {
         "status": True,
         "type": "BUY",
@@ -39,7 +39,7 @@ def active_trade_with_position():
         "option_id": "12345",
         "option_entry": 150,
         "lot_size": 10,
-        "exchange_segment_str": "MCX",
+        "exchange_segment_str": "MCX_COMM",  # V2 API format
     }
 
 
@@ -56,13 +56,16 @@ def empty_trade_state():
 
 @pytest.fixture
 def mock_broker_position():
-    """Mock broker position response"""
+    """Mock broker position response - V2 API format"""
+    # V2 uses buyAvg/sellAvg instead of averagePrice
     return {
         'securityId': '12345',
         'tradingSymbol': 'CRUDEOIL26JAN6000CE',
-        'exchangeSegment': 'MCX',
+        'exchangeSegment': 'MCX_COMM',
         'netQty': 10,
-        'averagePrice': 150.0,
+        'buyAvg': 150.0,
+        'sellAvg': 0.0,
+        'costPrice': 150.0,
         'unrealizedProfit': 200.0,
         'productType': 'INTRADAY'
     }
@@ -177,11 +180,12 @@ class TestFetchBrokerPositions:
         """Should filter out positions with zero quantity"""
         from position_reconciliation import fetch_broker_positions
         
+        # V2 API uses buyAvg/sellAvg instead of averagePrice
         mock_dhan.get_positions.return_value = {
             'status': 'success',
             'data': [
-                {'securityId': '12345', 'netQty': 10, 'averagePrice': 100},
-                {'securityId': '12346', 'netQty': 0, 'averagePrice': 100},  # Zero qty
+                {'securityId': '12345', 'netQty': 10, 'buyAvg': 100, 'sellAvg': 0},
+                {'securityId': '12346', 'netQty': 0, 'buyAvg': 100, 'sellAvg': 0},  # Zero qty
             ]
         }
         
@@ -211,7 +215,7 @@ class TestReconcilePositions:
         broker_pos = BrokerPosition(
             security_id='12345',
             trading_symbol='CRUDEOIL26JAN6000CE',
-            exchange_segment='MCX',
+            exchange_segment='MCX_COMM',  # V2 API format
             position_type='LONG',
             quantity=10,
             average_price=150.0,
@@ -271,7 +275,7 @@ class TestReconcilePositions:
         broker_pos = BrokerPosition(
             security_id='12345',
             trading_symbol='CRUDEOIL26JAN6000CE',
-            exchange_segment='MCX',
+            exchange_segment='MCX_COMM',  # V2 API format
             position_type='LONG',
             quantity=10,
             average_price=150.0,
@@ -299,7 +303,7 @@ class TestReconcilePositions:
         broker_pos = BrokerPosition(
             security_id='12345',
             trading_symbol='CRUDEOIL26JAN6000CE',
-            exchange_segment='MCX',
+            exchange_segment='MCX_COMM',  # V2 API format
             position_type='LONG',
             quantity=20,  # Different from local lot_size of 10
             average_price=150.0,
@@ -390,7 +394,7 @@ class TestAutoFixMismatch:
         broker_pos = BrokerPosition(
             security_id='12345',
             trading_symbol='CRUDEOIL26JAN6000CE',
-            exchange_segment='MCX',
+            exchange_segment='MCX_COMM',  # V2 API format
             position_type='LONG',
             quantity=20,
             average_price=150.0,
@@ -438,7 +442,7 @@ class TestTradeVerification:
         broker_pos = BrokerPosition(
             security_id='12345',
             trading_symbol='CRUDEOIL26JAN6000CE',
-            exchange_segment='MCX',
+            exchange_segment='MCX_COMM',  # V2 API format
             position_type='LONG',
             quantity=10,
             average_price=150.0,
@@ -474,7 +478,7 @@ class TestTradeVerification:
         broker_pos = BrokerPosition(
             security_id='12345',
             trading_symbol='CRUDEOIL26JAN6000CE',
-            exchange_segment='MCX',
+            exchange_segment='MCX_COMM',  # V2 API format
             position_type='LONG',
             quantity=5,  # Less than expected
             average_price=150.0,

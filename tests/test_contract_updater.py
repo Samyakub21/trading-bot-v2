@@ -64,12 +64,12 @@ def sample_contracts():
 
 @pytest.fixture
 def sample_instrument_config():
-    """Sample instrument configuration"""
+    """Sample instrument configuration - V2 API format"""
     return {
         "CRUDEOIL": {
             "name": "CRUDE OIL",
             "exchange_segment_int": 5,
-            "exchange_segment_str": "MCX",
+            "exchange_segment_str": "MCX_COMM",  # V2 API format
             "future_id": "OLD_ID",
             "lot_size": 10,
             "expiry_date": "2025-12-15",

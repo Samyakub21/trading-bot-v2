@@ -15,19 +15,19 @@ from unittest.mock import patch, MagicMock, PropertyMock
 
 @pytest.fixture
 def mock_instruments():
-    """Mock instruments configuration"""
+    """Mock instruments configuration - V2 API format"""
     return {
         "CRUDEOIL": {
             "name": "CRUDE OIL",
             "exchange_segment_int": 5,
-            "exchange_segment_str": "MCX",
+            "exchange_segment_str": "MCX_COMM",  # V2 API format
             "future_id": "464926",
             "lot_size": 10,
         },
         "GOLD": {
             "name": "GOLD",
             "exchange_segment_int": 5,
-            "exchange_segment_str": "MCX",
+            "exchange_segment_str": "MCX_COMM",  # V2 API format
             "future_id": "464927",
             "lot_size": 100,
         }

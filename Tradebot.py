@@ -35,14 +35,41 @@ from state_stores import (
 from contract_updater import auto_update_instruments_on_startup, schedule_daily_update
 from position_reconciliation import reconcile_on_startup, run_periodic_reconciliation
 
+# Heartbeat / Dead Man's Switch
+try:
+    from heartbeat import (
+        start_heartbeat, stop_heartbeat, increment_scanner_cycle, 
+        record_heartbeat_error, check_stop_signal
+    )
+    HEARTBEAT_AVAILABLE = True
+except ImportError:
+    HEARTBEAT_AVAILABLE = False
+    logging.warning("⚠️ Heartbeat module not available - dead man's switch disabled")
+
+# End of Day Report
+try:
+    from eod_report import schedule_eod_report, stop_eod_report, generate_and_send_eod_report
+    EOD_REPORT_AVAILABLE = True
+except ImportError:
+    EOD_REPORT_AVAILABLE = False
+    logging.warning("⚠️ EOD Report module not available - daily reports disabled")
+
 # =============================================================================
 # LOGGING CONFIGURATION
 # =============================================================================
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
-    handlers=[logging.FileHandler("bot.log"), logging.StreamHandler()]
+    handlers=[
+        logging.FileHandler("bot.log", encoding="utf-8"),
+        logging.StreamHandler()
+    ]
 )
+
+# Configure StreamHandler to use UTF-8 encoding for Windows console
+for handler in logging.root.handlers:
+    if isinstance(handler, logging.StreamHandler) and handler.stream.name in ['<stdout>', '<stderr>']:
+        handler.setStream(open(handler.stream.fileno(), mode='w', encoding='utf-8', buffering=1, closefd=False))
 
 
 # =============================================================================
@@ -159,6 +186,26 @@ class TradingBot:
         # Wait for threads to finish
         logging.info("Waiting for threads to finish...")
         time.sleep(3)
+        
+        # Stop heartbeat
+        if HEARTBEAT_AVAILABLE:
+            stop_heartbeat()
+        
+        # Stop EOD report scheduler
+        if EOD_REPORT_AVAILABLE:
+            try:
+                stop_eod_report()
+                logging.info("EOD Report scheduler stopped")
+            except Exception as e:
+                logging.debug(f"Error stopping EOD report: {e}")
+        
+        # Send shutdown alert (only if not already sent for open position)
+        if not self.active_trade.get("status"):
+            send_alert(
+                f"🛑 **TRADING BOT STOPPED**\n"
+                f"Reason: {reason}\n"
+                f"No open positions."
+            )
         
         logging.info("=" * 60)
         logging.info("🛑 TRADING BOT STOPPED")
@@ -293,6 +340,11 @@ class TradingBot:
     
     def start(self) -> None:
         """Start the trading bot and all worker threads"""
+        # Start heartbeat (dead man's switch)
+        if HEARTBEAT_AVAILABLE:
+            start_heartbeat()
+            logging.info("💓 Heartbeat monitor started")
+        
         # Auto-update instrument contracts on startup
         logging.info("🔄 Checking for contract updates...")
         try:
@@ -331,16 +383,52 @@ class TradingBot:
         
         # Schedule daily contract updates (before market open)
         schedule_daily_update(INSTRUMENTS, update_time="08:55")
+        
+        # Schedule End of Day Report (at 11:35 PM)
+        if EOD_REPORT_AVAILABLE:
+            try:
+                schedule_eod_report()
+                logging.info("📊 End of Day Report scheduled for 23:35")
+            except Exception as e:
+                logging.warning(f"⚠️ Failed to schedule EOD report: {e}")
+        
+        # Send startup alert
+        if MULTI_SCAN_ENABLED:
+            instruments_list = ", ".join(get_instruments_to_scan())
+            send_alert(
+                f"🚀 **TRADING BOT STARTED**\n"
+                f"Mode: Multi-Instrument Scanning\n"
+                f"Instruments: {instruments_list}\n"
+                f"All systems initialized ✅"
+            )
+        else:
+            inst = INSTRUMENTS[self.active_instrument]
+            send_alert(
+                f"🚀 **TRADING BOT STARTED**\n"
+                f"Mode: Single Instrument\n"
+                f"Instrument: {inst['name']} ({self.active_instrument})\n"
+                f"All systems initialized ✅"
+            )
     
     def run(self) -> None:
         """Main run loop - blocks until shutdown"""
         try:
             while self.is_running and not socket_handler.is_shutdown():
+                # Check for external stop signal (from dashboard panic button)
+                if HEARTBEAT_AVAILABLE:
+                    should_stop, reason = check_stop_signal()
+                    if should_stop:
+                        logging.warning(f"⚠️ External stop signal received: {reason}")
+                        self.graceful_shutdown(f"External stop: {reason}")
+                        break
+                
                 time.sleep(1)
         except KeyboardInterrupt:
             self.graceful_shutdown("User interrupted (Ctrl+C)")
         except Exception as e:
             logging.error(f"Bot error: {e}")
+            if HEARTBEAT_AVAILABLE:
+                record_heartbeat_error(str(e))
             self.graceful_shutdown(f"Error: {e}")
     
     def get_trade_state(self) -> Dict[str, Any]:

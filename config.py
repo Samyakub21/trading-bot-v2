@@ -13,6 +13,10 @@ from typing import Any, Dict, Optional
 # =============================================================================
 # DEFAULT TRADING CONFIGURATION
 # =============================================================================
+# Data directory for runtime files
+DATA_DIR = Path(__file__).parent / 'data'
+DATA_DIR.mkdir(exist_ok=True)
+
 DEFAULT_TRADING_CONFIG = {
     # Risk Management
     "MAX_DAILY_LOSS": 5000,           # Maximum loss per day in INR
@@ -29,10 +33,10 @@ DEFAULT_TRADING_CONFIG = {
     # Order Execution
     "LIMIT_ORDER_BUFFER": 0.01,       # 1% buffer for limit orders
     
-    # State Files
-    "STATE_FILE": "trade_state_active.json",
-    "DAILY_PNL_FILE": "daily_pnl_combined.json",
-    "TRADE_HISTORY_FILE": "trade_history_combined.json",
+    # State Files (stored in data/ directory)
+    "STATE_FILE": str(DATA_DIR / "trade_state_active.json"),
+    "DAILY_PNL_FILE": str(DATA_DIR / "daily_pnl_combined.json"),
+    "TRADE_HISTORY_FILE": str(DATA_DIR / "trade_history_combined.json"),
 }
 
 
@@ -182,12 +186,44 @@ class Config:
     @property
     def TRADE_HISTORY_FILE(self) -> str:
         return self._trading_config["TRADE_HISTORY_FILE"]
+    
+    # --- Socket/Network Configuration ---
+    @property
+    def HEARTBEAT_TIMEOUT_SECONDS(self) -> int:
+        """Timeout in seconds before socket reconnection is triggered"""
+        return 30
+    
+    @property
+    def RECONNECT_DELAY_SECONDS(self) -> int:
+        """Delay in seconds before attempting socket reconnection"""
+        return 5
+    
+    @property
+    def MIN_TICK_INTERVAL_MS(self) -> int:
+        """Minimum interval in milliseconds between tick processing"""
+        return 100
+    
+    def reload_trading_config(self) -> Dict[str, Any]:
+        """
+        Reload trading configuration from file.
+        Call this to pick up live config changes from the dashboard.
+        
+        Returns:
+            The updated trading config dictionary
+        """
+        self._trading_config = self._load_trading_config()
+        return self._trading_config
+    
+    def get_fresh_config(self) -> Dict[str, Any]:
+        """
+        Get a fresh copy of trading config from file without caching.
+        Useful for checking if config has changed.
+        
+        Returns:
+            Fresh trading config dictionary
+        """
+        return self._load_trading_config()
 
-
-# Networking / heartbeat
-HEARTBEAT_TIMEOUT_SECONDS = 30
-RECONNECT_DELAY_SECONDS = 5
-MIN_TICK_INTERVAL_MS = 100
 
 # Create a singleton instance
 config = Config()

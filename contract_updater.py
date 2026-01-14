@@ -15,12 +15,16 @@ from pathlib import Path
 from config import config
 from dhanhq import dhanhq
 
-# Initialize Dhan client
+# Initialize Dhan client (dhanhq v2.0)
 dhan = dhanhq(config.CLIENT_ID, config.ACCESS_TOKEN)
 
+# Data directory for runtime files
+DATA_DIR = Path(__file__).parent / 'data'
+DATA_DIR.mkdir(exist_ok=True)
+
 # Cache file for contract data
-CONTRACT_CACHE_FILE = "contract_cache.json"
-SCRIP_MASTER_CSV = "Extras/api-scrip-master-detailed.csv"
+CONTRACT_CACHE_FILE = str(DATA_DIR / "contract_cache.json")
+SCRIP_MASTER_CSV = "Extras/data/api-scrip-master-detailed.csv"
 
 # Dhan API scrip master URL
 SCRIP_MASTER_URL = "https://images.dhan.co/api-data/api-scrip-master.csv"
@@ -95,7 +99,7 @@ def find_current_month_future(
     
     Args:
         underlying: e.g., "CRUDEOIL", "GOLD", "NIFTY"
-        exchange: e.g., "MCX", "NSE"
+        exchange: e.g., "MCX_COMM", "NSE_FNO" (V2 API format)
         contracts: List of contract dictionaries from scrip master
     
     Returns:
@@ -106,31 +110,47 @@ def find_current_month_future(
     # Filter for matching underlying and exchange futures
     matching = []
     
+    # V2 API uses MCX_COMM for commodities - normalize for matching
+    exchange_normalized = exchange.replace("_COMM", "").upper()
+    
     for contract in contracts:
         # Check exchange
         exch = contract.get('SEM_EXM_EXCH_ID', '').upper()
-        if exchange == "MCX" and exch != "MCX":
+        if exchange_normalized == "MCX" and exch != "MCX":
             continue
-        if exchange == "NSE_FNO" and exch not in ["NSE", "NFO"]:
+        if exchange_normalized == "NSE_FNO" and exch not in ["NSE", "NFO"]:
+            continue
+        if exchange_normalized == "NSE" and exch not in ["NSE", "NFO"]:
             continue
         
-        # Check instrument type (futures)
+        # Check instrument type (futures only - not options)
         inst_type = contract.get('SEM_INSTRUMENT_NAME', '').upper()
-        if 'FUT' not in inst_type:
+        # FUTCOM = commodity futures, FUTIDX = index futures, FUTSTK = stock futures
+        # OPTFUT/OPTIDX = options (should be excluded)
+        if inst_type not in ['FUTCOM', 'FUTIDX', 'FUTSTK']:
             continue
         
-        # Check underlying name
+        # Check underlying name - must match at the start of trading symbol
         trading_symbol = contract.get('SEM_TRADING_SYMBOL', '').upper()
         custom_symbol = contract.get('SEM_CUSTOM_SYMBOL', '').upper()
         
-        if underlying.upper() not in trading_symbol and underlying.upper() not in custom_symbol:
+        # More precise matching: symbol should start with underlying followed by separator
+        # e.g., "NIFTY-Jan2026-FUT" for underlying "NIFTY"
+        # Avoid matching "BANKNIFTY" when looking for "NIFTY"
+        underlying_upper = underlying.upper()
+        symbol_matches = (
+            trading_symbol.startswith(underlying_upper + '-') or  # CRUDEOIL-16Jan2026-FUT
+            trading_symbol.startswith(underlying_upper + 'M-') or  # CRUDEOILM-16Jan2026-FUT (mini)
+            custom_symbol.startswith(underlying_upper + ' ')  # CRUDEOIL JAN FUT
+        )
+        if not symbol_matches:
             continue
         
         # Parse expiry date
         expiry_str = contract.get('SEM_EXPIRY_DATE', '')
         try:
-            # Try different date formats
-            for fmt in ['%Y-%m-%d', '%d-%m-%Y', '%d/%m/%Y']:
+            # Try different date formats (including datetime with time)
+            for fmt in ['%Y-%m-%d %H:%M:%S', '%Y-%m-%d', '%d-%m-%Y', '%d/%m/%Y']:
                 try:
                     expiry_date = datetime.strptime(expiry_str, fmt).date()
                     break
@@ -166,8 +186,17 @@ def find_current_month_option_chain(
 ) -> List[Dict]:
     """
     Find all options for an underlying with a specific expiry.
+    
+    Args:
+        underlying: e.g., "CRUDEOIL", "GOLD", "NIFTY"
+        exchange: e.g., "MCX_COMM", "NSE_FNO" (V2 API format)
+        contracts: List of contract dictionaries
+        expiry_date: Optional specific expiry date
     """
     today = datetime.now().date()
+    
+    # V2 API uses MCX_COMM for commodities - normalize for matching
+    exchange_normalized = exchange.replace("_COMM", "").upper()
     
     if expiry_date:
         target_expiry = datetime.strptime(expiry_date, '%Y-%m-%d').date()
@@ -180,9 +209,11 @@ def find_current_month_option_chain(
     for contract in contracts:
         # Check exchange
         exch = contract.get('SEM_EXM_EXCH_ID', '').upper()
-        if exchange == "MCX" and exch != "MCX":
+        if exchange_normalized == "MCX" and exch != "MCX":
             continue
-        if exchange == "NSE_FNO" and exch not in ["NSE", "NFO"]:
+        if exchange_normalized == "NSE_FNO" and exch not in ["NSE", "NFO"]:
+            continue
+        if exchange_normalized == "NSE" and exch not in ["NSE", "NFO"]:
             continue
         
         # Check instrument type (options)
@@ -198,7 +229,7 @@ def find_current_month_option_chain(
         # Parse expiry
         expiry_str = contract.get('SEM_EXPIRY_DATE', '')
         try:
-            for fmt in ['%Y-%m-%d', '%d-%m-%Y', '%d/%m/%Y']:
+            for fmt in ['%Y-%m-%d %H:%M:%S', '%Y-%m-%d', '%d-%m-%Y', '%d/%m/%Y']:
                 try:
                     contract_expiry = datetime.strptime(expiry_str, fmt).date()
                     break
@@ -257,7 +288,13 @@ def get_updated_instrument_config(
     # Extract details
     security_id = future_contract.get('SEM_SMST_SECURITY_ID', '')
     expiry_date = future_contract.get('_expiry_date')
-    lot_size = int(future_contract.get('SEM_LOT_UNITS', current_config.get('lot_size', 1)))
+    
+    # For lot size: prefer the API value if > 1, otherwise keep original config
+    # (Dhan API returns 1.0 for some MCX commodities which is incorrect)
+    lot_size_raw = future_contract.get('SEM_LOT_UNITS', 1)
+    api_lot_size = int(float(lot_size_raw))
+    original_lot_size = current_config.get('lot_size', 1)
+    lot_size = api_lot_size if api_lot_size > 1 else original_lot_size
     
     # Build updated config
     updated_config = current_config.copy()
@@ -460,7 +497,7 @@ def get_next_expiry_dates(underlying: str, exchange: str, count: int = 3) -> Lis
         # Parse expiry
         expiry_str = contract.get('SEM_EXPIRY_DATE', '')
         try:
-            for fmt in ['%Y-%m-%d', '%d-%m-%Y', '%d/%m/%Y']:
+            for fmt in ['%Y-%m-%d %H:%M:%S', '%Y-%m-%d', '%d-%m-%Y', '%d/%m/%Y']:
                 try:
                     expiry_date = datetime.strptime(expiry_str, fmt).date()
                     break

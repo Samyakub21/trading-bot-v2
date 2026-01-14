@@ -16,7 +16,7 @@ from utils import send_alert, save_state, load_state
 
 from dhanhq import dhanhq
 
-# Initialize Dhan client
+# Initialize Dhan client (dhanhq v2.0)
 dhan = dhanhq(config.CLIENT_ID, config.ACCESS_TOKEN)
 
 
@@ -47,14 +47,25 @@ class BrokerPosition:
     
     @classmethod
     def from_dhan_response(cls, data: Dict) -> 'BrokerPosition':
-        """Create from Dhan API response"""
+        """Create from Dhan API V2 response"""
+        # V2 API uses buyAvg/sellAvg and costPrice instead of averagePrice
+        net_qty = data.get('netQty', 0)
+        if net_qty > 0:
+            avg_price = float(data.get('buyAvg', 0))
+        else:
+            avg_price = float(data.get('sellAvg', 0))
+        
+        # Fallback to costPrice if available
+        if avg_price == 0:
+            avg_price = float(data.get('costPrice', 0))
+            
         return cls(
             security_id=str(data.get('securityId', '')),
             trading_symbol=data.get('tradingSymbol', ''),
             exchange_segment=data.get('exchangeSegment', ''),
-            position_type="LONG" if data.get('netQty', 0) > 0 else "SHORT",
-            quantity=abs(data.get('netQty', 0)),
-            average_price=float(data.get('averagePrice', 0)),
+            position_type="LONG" if net_qty > 0 else "SHORT",
+            quantity=abs(net_qty),
+            average_price=avg_price,
             unrealized_pnl=float(data.get('unrealizedProfit', 0)),
             product_type=data.get('productType', '')
         )

@@ -211,3 +211,60 @@ sudo systemctl edit tradingbot
 # Update environment variables
 sudo systemctl restart tradingbot
 ```
+## Rich Notifications & Reports
+
+### Rich Trade Alerts (Chart Images)
+
+The bot now sends chart images along with trade alerts to Telegram, showing:
+- Entry candle highlighted
+- Stop loss level
+- Target levels
+- EMAs and indicators
+- RSI and volume information
+
+This feature is automatically enabled. To disable, set `send_chart=False` when calling `send_signal_alert()`.
+
+### End-of-Day Reports
+
+The bot automatically generates and sends daily trading reports at 11:35 PM including:
+- Net P&L (after brokerage)
+- Trade summary with entry/exit details
+- Brokerage breakdown
+- Win/loss statistics
+- Overall performance metrics
+
+Reports are:
+1. **Saved locally** in `reports/` folder as HTML
+2. **Sent to Telegram** as a summary message
+3. **Emailed as PDF/HTML** (if email configured)
+
+#### Email Configuration (Optional)
+
+Set these environment variables or add to `.trading_bot_env`:
+
+```bash
+export SMTP_SERVER="smtp.gmail.com"
+export SMTP_PORT="587"
+export EMAIL_ADDRESS="your_email@gmail.com"
+export EMAIL_PASSWORD="your_app_password"  # Use Gmail App Password
+export EMAIL_RECIPIENT="recipient@example.com"
+```
+
+For Gmail, you need to:
+1. Enable 2FA on your Google account
+2. Create an "App Password" at https://myaccount.google.com/apppasswords
+3. Use the App Password (not your regular password)
+
+#### Manual Report Generation
+
+To generate a report manually:
+
+```python
+from eod_report import generate_and_send_eod_report
+generate_and_send_eod_report()
+```
+
+Or from terminal:
+```bash
+python -c "from eod_report import generate_and_send_eod_report; generate_and_send_eod_report()"
+```

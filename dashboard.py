@@ -22,6 +22,12 @@ from typing import Optional, Dict, Any, List, Tuple
 from functools import wraps
 import threading
 
+# Import instruments for manual trade
+from instruments import INSTRUMENTS, get_instruments_to_scan
+
+# Trading config file path for live updates
+TRADING_CONFIG_FILE = Path(__file__).parent / 'trading_config.json'
+
 # Try to import bcrypt, fall back to hashlib if not available
 try:
     import bcrypt
@@ -396,6 +402,85 @@ def require_auth(func):
             return None
         return func(*args, **kwargs)
     return wrapper
+
+# =============================================================================
+# EMERGENCY STOP FUNCTIONALITY
+# =============================================================================
+
+EMERGENCY_EXIT_SIGNAL_FILE = DATA_DIR / "emergency_exit_signal.json"
+BOT_STOP_SIGNAL_FILE = DATA_DIR / "bot_control.json"
+
+
+def _execute_emergency_stop():
+    """
+    Execute emergency stop: 
+    1. Signal scanner to exit all positions
+    2. Signal bot to stop running
+    3. Write to Telegram alert
+    """
+    import logging
+    
+    try:
+        # 1. Write emergency exit signal for scanner
+        signal_data = {
+            "timestamp": datetime.now().isoformat(),
+            "action": "EMERGENCY_EXIT_ALL",
+            "triggered_by": st.session_state.get('username', 'dashboard'),
+            "reason": "PANIC BUTTON - Emergency Stop All"
+        }
+        
+        with open(EMERGENCY_EXIT_SIGNAL_FILE, 'w') as f:
+            json.dump(signal_data, f, indent=2)
+        
+        # 2. Write bot stop signal (for heartbeat monitor and bot loop)
+        stop_signal = {
+            "action": "STOP",
+            "reason": "Emergency stop from dashboard",
+            "timestamp": datetime.now().isoformat(),
+            "triggered_by": st.session_state.get('username', 'dashboard')
+        }
+        
+        with open(BOT_STOP_SIGNAL_FILE, 'w') as f:
+            json.dump(stop_signal, f, indent=2)
+        
+        # 3. Try to send Telegram alert
+        try:
+            from utils import send_alert
+            send_alert(
+                "🚨 **EMERGENCY STOP TRIGGERED** 🚨\n\n"
+                f"Triggered by: {st.session_state.get('username', 'Unknown')}\n"
+                f"Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+                "Actions taken:\n"
+                "• Exit all positions signal sent\n"
+                "• Bot stop signal sent\n\n"
+                "⚠️ Please verify positions manually!"
+            )
+        except Exception as e:
+            logging.warning(f"Could not send Telegram alert: {e}")
+        
+        st.sidebar.success("🛑 Emergency stop signal sent!")
+        st.sidebar.warning("Check positions manually to confirm all exits.")
+        
+    except Exception as e:
+        st.sidebar.error(f"❌ Emergency stop failed: {e}")
+        logging.error(f"Emergency stop error: {e}")
+
+
+def check_emergency_exit_pending() -> bool:
+    """Check if an emergency exit signal is pending."""
+    try:
+        if EMERGENCY_EXIT_SIGNAL_FILE.exists():
+            # Check if signal was recent (within last 5 minutes)
+            with open(EMERGENCY_EXIT_SIGNAL_FILE, 'r') as f:
+                data = json.load(f)
+            
+            signal_time = datetime.fromisoformat(data.get('timestamp', '2000-01-01'))
+            if (datetime.now() - signal_time).total_seconds() < 300:
+                return True
+    except Exception:
+        pass
+    return False
+
 
 # =============================================================================
 # DATA LOADING WITH ERROR HANDLING
@@ -878,6 +963,590 @@ def render_trade_log():
     )
 
 # =============================================================================
+# MANUAL TRADE FORM
+# =============================================================================
+
+def load_trading_config() -> Dict[str, Any]:
+    """Load current trading configuration from file"""
+    from config import DEFAULT_TRADING_CONFIG
+    config = DEFAULT_TRADING_CONFIG.copy()
+    
+    if TRADING_CONFIG_FILE.exists():
+        try:
+            with open(TRADING_CONFIG_FILE, 'r') as f:
+                file_config = json.load(f)
+            config.update(file_config)
+        except Exception as e:
+            st.warning(f"Could not load trading config: {e}")
+    
+    return config
+
+
+def save_trading_config(config: Dict[str, Any]) -> bool:
+    """Save trading configuration to file"""
+    try:
+        with open(TRADING_CONFIG_FILE, 'w') as f:
+            json.dump(config, f, indent=2)
+        return True
+    except Exception as e:
+        st.error(f"Failed to save config: {e}")
+        return False
+
+
+def calculate_manual_sl_target(
+    instrument: str,
+    signal: str,
+    entry_price: float
+) -> Tuple[float, float, float]:
+    """
+    Calculate SL and targets for manual trade based on risk management rules.
+    
+    Returns:
+        Tuple of (stop_loss, target_1, target_2)
+    """
+    inst_config = INSTRUMENTS.get(instrument, {})
+    strike_step = inst_config.get("strike_step", 50)
+    
+    # Dynamic SL calculation based on 1R risk
+    # Using a default risk of ~1% of entry price or minimum strike step
+    risk_amount = max(entry_price * 0.01, strike_step)
+    
+    if signal == "BUY":
+        stop_loss = round(entry_price - risk_amount, 2)
+        target_1 = round(entry_price + (risk_amount * 2), 2)  # 1:2 RR
+        target_2 = round(entry_price + (risk_amount * 3), 2)  # 1:3 RR
+    else:  # SELL
+        stop_loss = round(entry_price + risk_amount, 2)
+        target_1 = round(entry_price - (risk_amount * 2), 2)  # 1:2 RR
+        target_2 = round(entry_price - (risk_amount * 3), 2)  # 1:3 RR
+    
+    return stop_loss, target_1, target_2
+
+
+def render_manual_trade():
+    """Render manual trade entry form"""
+    st.subheader("🎯 Manual Trade Entry")
+    
+    st.info("""
+    **Manual Intervention Controls**  
+    Use this form to manually enter trades when you see a signal the bot misses,
+    or when you want to take a position based on news or manual analysis.
+    The system will auto-calculate SL and Target based on the bot's risk management rules.
+    """)
+    
+    # Check if there's already an active trade
+    state_data = load_trade_state()
+    if state_data.get("status", False):
+        st.warning(f"⚠️ There is already an active trade in {state_data.get('instrument', 'Unknown')}. "
+                   "Please close the existing trade before entering a new one.")
+        
+        # Show current trade info
+        with st.expander("📊 Current Trade Details", expanded=True):
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Instrument", state_data.get("instrument", "N/A"))
+                st.metric("Trade Type", state_data.get("type", "N/A"))
+            with col2:
+                st.metric("Entry Price", f"₹{state_data.get('entry', 0):,.2f}")
+                st.metric("Current SL", f"₹{state_data.get('sl', 0):,.2f}")
+            with col3:
+                st.metric("Option Entry", f"₹{state_data.get('option_entry', 0):,.2f}")
+                st.metric("Step Level", state_data.get("step_level", 0))
+        
+        # Emergency exit button
+        st.divider()
+        st.markdown("### 🚨 Emergency Exit")
+        st.warning("Use this only for emergency situations when you need to exit immediately.")
+        
+        if st.button("🛑 Emergency Close Position", type="primary", use_container_width=True):
+            st.error("⚠️ Emergency exit requested. Please confirm in the Tradebot terminal.")
+            # Create a signal file that the bot can pick up
+            emergency_file = DATA_DIR / "emergency_exit_signal.json"
+            with open(emergency_file, 'w') as f:
+                json.dump({
+                    "action": "EMERGENCY_EXIT",
+                    "timestamp": datetime.now().isoformat(),
+                    "requested_by": st.session_state.get('username', 'dashboard')
+                }, f)
+            st.success("Emergency exit signal sent to bot. Check bot terminal for confirmation.")
+        
+        return
+    
+    # Trade entry form
+    st.markdown("### 📝 New Trade Entry")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        # Instrument selection
+        available_instruments = list(INSTRUMENTS.keys())
+        selected_instrument = st.selectbox(
+            "Select Instrument",
+            available_instruments,
+            index=0,
+            help="Choose the instrument you want to trade"
+        )
+        
+        # Get instrument details
+        inst_config = INSTRUMENTS.get(selected_instrument, {})
+        st.caption(f"📊 **{inst_config.get('name', selected_instrument)}** | "
+                   f"Lot Size: {inst_config.get('lot_size', 'N/A')} | "
+                   f"Exchange: {inst_config.get('exchange_segment_str', 'N/A')}")
+    
+    with col2:
+        # Signal type
+        signal_type = st.radio(
+            "Trade Direction",
+            ["BUY (Bullish)", "SELL (Bearish)"],
+            horizontal=True,
+            help="Select trade direction"
+        )
+        signal = "BUY" if "BUY" in signal_type else "SELL"
+    
+    st.divider()
+    
+    # Price inputs
+    col3, col4, col5 = st.columns(3)
+    
+    with col3:
+        current_price = st.number_input(
+            "Current Future Price (₹)",
+            min_value=0.0,
+            value=0.0,
+            step=0.5,
+            help="Enter the current futures price from the market"
+        )
+    
+    with col4:
+        option_premium = st.number_input(
+            "Option Premium (₹)",
+            min_value=0.0,
+            value=0.0,
+            step=0.5,
+            help="Enter the option premium you want to pay"
+        )
+    
+    with col5:
+        # Auto-calculate ATM strike
+        strike_step = inst_config.get("strike_step", 50)
+        if current_price > 0:
+            atm_strike = round(current_price / strike_step) * strike_step
+        else:
+            atm_strike = 0
+        
+        atm_strike = st.number_input(
+            "Strike Price",
+            min_value=0,
+            value=int(atm_strike),
+            step=strike_step,
+            help="ATM strike price (auto-calculated)"
+        )
+    
+    # Auto-calculate SL and Targets
+    if current_price > 0:
+        stop_loss, target_1, target_2 = calculate_manual_sl_target(
+            selected_instrument, signal, current_price
+        )
+        
+        st.divider()
+        st.markdown("### 📈 Auto-Calculated Risk Parameters")
+        
+        calc_col1, calc_col2, calc_col3, calc_col4 = st.columns(4)
+        
+        with calc_col1:
+            st.metric(
+                "Stop Loss",
+                f"₹{stop_loss:,.2f}",
+                delta=f"{abs(current_price - stop_loss):.2f} pts risk",
+                delta_color="inverse"
+            )
+        
+        with calc_col2:
+            st.metric(
+                "Target 1 (1:2 RR)",
+                f"₹{target_1:,.2f}",
+                delta=f"+{abs(target_1 - current_price):.2f} pts"
+            )
+        
+        with calc_col3:
+            st.metric(
+                "Target 2 (1:3 RR)",
+                f"₹{target_2:,.2f}",
+                delta=f"+{abs(target_2 - current_price):.2f} pts"
+            )
+        
+        with calc_col4:
+            risk_per_lot = abs(current_price - stop_loss) * inst_config.get("lot_size", 1)
+            st.metric(
+                "Max Risk/Lot",
+                f"₹{risk_per_lot:,.2f}",
+                delta="per lot"
+            )
+        
+        # Allow manual override
+        with st.expander("🔧 Manual Override (Advanced)", expanded=False):
+            override_col1, override_col2, override_col3 = st.columns(3)
+            
+            with override_col1:
+                manual_sl = st.number_input(
+                    "Custom SL",
+                    min_value=0.0,
+                    value=float(stop_loss),
+                    step=0.5
+                )
+            
+            with override_col2:
+                manual_target1 = st.number_input(
+                    "Custom Target 1",
+                    min_value=0.0,
+                    value=float(target_1),
+                    step=0.5
+                )
+            
+            with override_col3:
+                manual_target2 = st.number_input(
+                    "Custom Target 2",
+                    min_value=0.0,
+                    value=float(target_2),
+                    step=0.5
+                )
+            
+            # Update values if manually changed
+            if manual_sl != stop_loss:
+                stop_loss = manual_sl
+            if manual_target1 != target_1:
+                target_1 = manual_target1
+            if manual_target2 != target_2:
+                target_2 = manual_target2
+    
+    st.divider()
+    
+    # Trade execution
+    st.markdown("### 🚀 Execute Trade")
+    
+    # Confirmation checkbox
+    confirm = st.checkbox(
+        "I confirm this trade and understand the risks involved",
+        value=False
+    )
+    
+    col_btn1, col_btn2 = st.columns(2)
+    
+    with col_btn1:
+        if st.button(
+            f"📤 Place {signal} Order",
+            type="primary",
+            use_container_width=True,
+            disabled=not (confirm and current_price > 0 and option_premium > 0)
+        ):
+            # Create manual trade signal file for the bot to pick up
+            opt_type = "CE" if signal == "BUY" else "PE"
+            manual_trade_signal = {
+                "action": "MANUAL_ENTRY",
+                "instrument": selected_instrument,
+                "signal": signal,
+                "option_type": opt_type,
+                "atm_strike": atm_strike,
+                "future_price": current_price,
+                "option_premium": option_premium,
+                "stop_loss": stop_loss,
+                "target_1": target_1,
+                "target_2": target_2,
+                "timestamp": datetime.now().isoformat(),
+                "requested_by": st.session_state.get('username', 'dashboard')
+            }
+            
+            signal_file = DATA_DIR / "manual_trade_signal.json"
+            with open(signal_file, 'w') as f:
+                json.dump(manual_trade_signal, f, indent=2)
+            
+            st.success(f"""
+            ✅ **Manual trade signal created!**  
+            - **{inst_config.get('name')} {atm_strike} {opt_type}**
+            - Entry: ₹{option_premium} | SL: ₹{stop_loss} | Target: ₹{target_1}
+            
+            ⚠️ The bot will pick up this signal on its next scan cycle.
+            Please ensure the Tradebot is running.
+            """)
+            
+            # Log the action
+            if PROMETHEUS_AVAILABLE:
+                try:
+                    TRADE_COUNTER.labels(
+                        instrument=selected_instrument,
+                        trade_type=signal,
+                        outcome='manual_signal'
+                    ).inc()
+                except:
+                    pass
+    
+    with col_btn2:
+        if st.button("🔄 Clear Form", use_container_width=True):
+            st.rerun()
+
+
+# =============================================================================
+# SETTINGS PAGE - LIVE CONFIG UPDATES
+# =============================================================================
+
+def render_settings_page():
+    """Render settings page for live configuration updates"""
+    st.subheader("⚙️ Bot Settings & Configuration")
+    
+    st.info("""
+    **Live Configuration Updates**  
+    Update trading parameters without restarting the bot.
+    Changes are saved to `trading_config.json` and take effect immediately.
+    """)
+    
+    # Load current config
+    current_config = load_trading_config()
+    
+    # Create tabs for different settings categories
+    tab1, tab2, tab3, tab4 = st.tabs([
+        "💰 Risk Management",
+        "📊 Signal Settings", 
+        "⏱️ Timing & Cooldowns",
+        "📁 View Config File"
+    ])
+    
+    # Track if any changes were made
+    config_changed = False
+    new_config = current_config.copy()
+    
+    # === TAB 1: Risk Management ===
+    with tab1:
+        st.markdown("### 💰 Risk Management Settings")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            new_max_daily_loss = st.number_input(
+                "Maximum Daily Loss (₹)",
+                min_value=1000,
+                max_value=100000,
+                value=int(current_config.get("MAX_DAILY_LOSS", 5000)),
+                step=500,
+                help="Maximum loss allowed per day before trading stops"
+            )
+            if new_max_daily_loss != current_config.get("MAX_DAILY_LOSS"):
+                new_config["MAX_DAILY_LOSS"] = new_max_daily_loss
+                config_changed = True
+            
+            new_max_trades = st.number_input(
+                "Maximum Trades Per Day",
+                min_value=1,
+                max_value=20,
+                value=int(current_config.get("MAX_TRADES_PER_DAY", 5)),
+                step=1,
+                help="Maximum number of trades allowed per day"
+            )
+            if new_max_trades != current_config.get("MAX_TRADES_PER_DAY"):
+                new_config["MAX_TRADES_PER_DAY"] = new_max_trades
+                config_changed = True
+        
+        with col2:
+            new_limit_buffer = st.number_input(
+                "Limit Order Buffer (%)",
+                min_value=0.001,
+                max_value=0.05,
+                value=float(current_config.get("LIMIT_ORDER_BUFFER", 0.01)),
+                step=0.005,
+                format="%.3f",
+                help="Buffer percentage for limit orders (e.g., 0.01 = 1%)"
+            )
+            if new_limit_buffer != current_config.get("LIMIT_ORDER_BUFFER"):
+                new_config["LIMIT_ORDER_BUFFER"] = new_limit_buffer
+                config_changed = True
+            
+            new_squareoff_buffer = st.number_input(
+                "Auto Square-Off Buffer (minutes)",
+                min_value=1,
+                max_value=30,
+                value=int(current_config.get("AUTO_SQUARE_OFF_BUFFER", 5)),
+                step=1,
+                help="Minutes before market close to auto square-off positions"
+            )
+            if new_squareoff_buffer != current_config.get("AUTO_SQUARE_OFF_BUFFER"):
+                new_config["AUTO_SQUARE_OFF_BUFFER"] = new_squareoff_buffer
+                config_changed = True
+        
+        # Risk Summary
+        st.divider()
+        st.markdown("#### 📊 Current Risk Limits")
+        risk_col1, risk_col2, risk_col3 = st.columns(3)
+        
+        with risk_col1:
+            st.metric("Max Daily Loss", f"₹{new_config.get('MAX_DAILY_LOSS', 5000):,}")
+        with risk_col2:
+            st.metric("Max Trades/Day", new_config.get('MAX_TRADES_PER_DAY', 5))
+        with risk_col3:
+            daily_data = load_daily_pnl()
+            remaining_loss = new_config.get('MAX_DAILY_LOSS', 5000) + daily_data.get('pnl', 0)
+            st.metric("Remaining Loss Budget", f"₹{max(0, remaining_loss):,.2f}")
+    
+    # === TAB 2: Signal Settings ===
+    with tab2:
+        st.markdown("### 📊 Signal Strength Settings")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            new_rsi_bullish = st.slider(
+                "RSI Bullish Threshold",
+                min_value=50,
+                max_value=80,
+                value=int(current_config.get("RSI_BULLISH_THRESHOLD", 60)),
+                help="RSI must be above this value for bullish signals"
+            )
+            if new_rsi_bullish != current_config.get("RSI_BULLISH_THRESHOLD"):
+                new_config["RSI_BULLISH_THRESHOLD"] = new_rsi_bullish
+                config_changed = True
+            
+            new_rsi_bearish = st.slider(
+                "RSI Bearish Threshold",
+                min_value=20,
+                max_value=50,
+                value=int(current_config.get("RSI_BEARISH_THRESHOLD", 40)),
+                help="RSI must be below this value for bearish signals"
+            )
+            if new_rsi_bearish != current_config.get("RSI_BEARISH_THRESHOLD"):
+                new_config["RSI_BEARISH_THRESHOLD"] = new_rsi_bearish
+                config_changed = True
+        
+        with col2:
+            new_volume_mult = st.slider(
+                "Volume Multiplier",
+                min_value=1.0,
+                max_value=3.0,
+                value=float(current_config.get("VOLUME_MULTIPLIER", 1.2)),
+                step=0.1,
+                help="Volume must be this multiple of average for signal confirmation"
+            )
+            if new_volume_mult != current_config.get("VOLUME_MULTIPLIER"):
+                new_config["VOLUME_MULTIPLIER"] = new_volume_mult
+                config_changed = True
+            
+            # Visual indicator for RSI zones
+            st.markdown("#### RSI Zones")
+            st.progress(new_rsi_bearish / 100, text=f"Bearish Zone: 0-{new_rsi_bearish}")
+            st.progress((new_rsi_bullish - new_rsi_bearish) / 100, text=f"Neutral: {new_rsi_bearish}-{new_rsi_bullish}")
+            st.progress((100 - new_rsi_bullish) / 100, text=f"Bullish Zone: {new_rsi_bullish}-100")
+    
+    # === TAB 3: Timing & Cooldowns ===
+    with tab3:
+        st.markdown("### ⏱️ Timing & Cooldown Settings")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            new_loss_cooldown = st.number_input(
+                "Cooldown After Loss (seconds)",
+                min_value=60,
+                max_value=1800,
+                value=int(current_config.get("COOLDOWN_AFTER_LOSS", 300)),
+                step=60,
+                help="Wait time after a losing trade before taking new trades"
+            )
+            if new_loss_cooldown != current_config.get("COOLDOWN_AFTER_LOSS"):
+                new_config["COOLDOWN_AFTER_LOSS"] = new_loss_cooldown
+                config_changed = True
+            
+            st.caption(f"= {new_loss_cooldown // 60} minutes {new_loss_cooldown % 60} seconds")
+        
+        with col2:
+            new_signal_cooldown = st.number_input(
+                "Signal Cooldown (seconds)",
+                min_value=300,
+                max_value=3600,
+                value=int(current_config.get("SIGNAL_COOLDOWN", 900)),
+                step=60,
+                help="Minimum time between signals in the same direction"
+            )
+            if new_signal_cooldown != current_config.get("SIGNAL_COOLDOWN"):
+                new_config["SIGNAL_COOLDOWN"] = new_signal_cooldown
+                config_changed = True
+            
+            st.caption(f"= {new_signal_cooldown // 60} minutes {new_signal_cooldown % 60} seconds")
+    
+    # === TAB 4: View Config File ===
+    with tab4:
+        st.markdown("### 📁 Current Configuration File")
+        
+        if TRADING_CONFIG_FILE.exists():
+            with open(TRADING_CONFIG_FILE, 'r') as f:
+                config_content = f.read()
+            st.code(config_content, language="json")
+        else:
+            st.warning("No trading_config.json file found. Using default values.")
+            st.code(json.dumps(current_config, indent=2), language="json")
+        
+        # Download button
+        st.download_button(
+            "📥 Download Config",
+            data=json.dumps(new_config, indent=2),
+            file_name="trading_config.json",
+            mime="application/json"
+        )
+    
+    # === Save Button ===
+    st.divider()
+    
+    col_save1, col_save2, col_save3 = st.columns([1, 2, 1])
+    
+    with col_save2:
+        if config_changed:
+            st.warning("⚠️ You have unsaved changes!")
+            
+            if st.button("💾 Save Configuration", type="primary", use_container_width=True):
+                if save_trading_config(new_config):
+                    st.success("""
+                    ✅ **Configuration saved successfully!**  
+                    Changes will take effect on the next scan cycle.
+                    
+                    Note: For some settings to fully apply, the bot may need to 
+                    complete its current operation cycle.
+                    """)
+                    
+                    # Log config change
+                    config_log = DATA_DIR / "config_change_log.json"
+                    log_entry = {
+                        "timestamp": datetime.now().isoformat(),
+                        "user": st.session_state.get('username', 'dashboard'),
+                        "changes": {k: new_config[k] for k in new_config if new_config[k] != current_config.get(k)}
+                    }
+                    
+                    try:
+                        existing_log = []
+                        if config_log.exists():
+                            with open(config_log, 'r') as f:
+                                existing_log = json.load(f)
+                        existing_log.append(log_entry)
+                        # Keep last 100 entries
+                        existing_log = existing_log[-100:]
+                        with open(config_log, 'w') as f:
+                            json.dump(existing_log, f, indent=2)
+                    except Exception as e:
+                        st.warning(f"Could not log config change: {e}")
+                    
+                    time.sleep(1)
+                    st.rerun()
+        else:
+            st.success("✅ No changes to save")
+    
+    # Reset to defaults button
+    with st.expander("🔄 Reset to Defaults", expanded=False):
+        st.warning("This will reset all settings to their default values.")
+        
+        if st.button("Reset All Settings", type="secondary"):
+            from config import DEFAULT_TRADING_CONFIG
+            if save_trading_config(DEFAULT_TRADING_CONFIG):
+                st.success("Settings reset to defaults!")
+                time.sleep(1)
+                st.rerun()
+
+
+# =============================================================================
 # AUTO-REFRESH FRAGMENT (Replaces infinite loop)
 # =============================================================================
 
@@ -923,6 +1592,38 @@ def main():
     # Sidebar
     st.sidebar.header("⚙️ Configuration")
     
+    # ==========================================================================
+    # EMERGENCY PANIC BUTTON - Always visible at top of sidebar
+    # ==========================================================================
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("### 🚨 EMERGENCY CONTROLS")
+    
+    # Panic button with confirmation
+    if 'panic_confirm' not in st.session_state:
+        st.session_state.panic_confirm = False
+    
+    if not st.session_state.panic_confirm:
+        if st.sidebar.button("🛑 EMERGENCY STOP ALL", type="primary", use_container_width=True):
+            st.session_state.panic_confirm = True
+            st.rerun()
+    else:
+        st.sidebar.error("⚠️ CONFIRM EMERGENCY STOP?")
+        st.sidebar.warning("This will:\n- Exit ALL open positions\n- Stop the trading bot\n- Cancel pending orders")
+        
+        col_yes, col_no = st.sidebar.columns(2)
+        with col_yes:
+            if st.button("✅ YES, STOP", type="primary", use_container_width=True):
+                # Execute emergency stop
+                _execute_emergency_stop()
+                st.session_state.panic_confirm = False
+                st.rerun()
+        with col_no:
+            if st.button("❌ Cancel", use_container_width=True):
+                st.session_state.panic_confirm = False
+                st.rerun()
+    
+    st.sidebar.markdown("---")
+    
     # Refresh rate selector (for manual refresh)
     auto_refresh = st.sidebar.checkbox("Auto-refresh (5s)", value=True)
     
@@ -934,7 +1635,7 @@ def main():
     # Navigation
     page = st.sidebar.radio(
         "Navigation",
-        ["📊 Dashboard", "🔌 WebSocket", "📈 Metrics", "📝 Trade Log"],
+        ["📊 Dashboard", "🎯 Manual Trade", "⚙️ Settings", "🔌 WebSocket", "📈 Metrics", "📝 Trade Log"],
         index=0
     )
     
@@ -964,6 +1665,12 @@ def main():
         
         st.divider()
         render_performance_analytics()
+    
+    elif page == "🎯 Manual Trade":
+        render_manual_trade()
+    
+    elif page == "⚙️ Settings":
+        render_settings_page()
         
     elif page == "🔌 WebSocket":
         render_websocket_status()

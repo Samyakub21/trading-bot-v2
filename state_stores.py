@@ -157,7 +157,10 @@ class SignalTracker:
         
         self._data_lock = threading.RLock()
         
-        # Signal tracking
+        # Per-instrument signal tracking: {instrument: {"signal": str, "time": datetime}}
+        self._instrument_signals: Dict[str, Dict[str, Any]] = {}
+        
+        # Legacy global signal tracking (for backward compatibility)
         self._last_signal: Optional[str] = None
         self._last_signal_time: Optional[datetime] = None
         
@@ -177,11 +180,19 @@ class SignalTracker:
         with self._data_lock:
             return self._last_signal_time
     
-    def update_signal(self, signal: str):
-        """Update last signal after a trade attempt"""
+    def update_signal(self, signal: str, instrument: Optional[str] = None):
+        """Update last signal after a trade attempt (per-instrument if specified)"""
         with self._data_lock:
+            # Update global tracking (backward compatibility)
             self._last_signal = signal
             self._last_signal_time = datetime.now()
+            
+            # Update per-instrument tracking
+            if instrument:
+                self._instrument_signals[instrument] = {
+                    "signal": signal,
+                    "time": datetime.now()
+                }
     
     # --- Loss tracking ---
     @property
@@ -213,9 +224,29 @@ class SignalTracker:
             
             return False, "Cooldown complete"
     
-    def is_in_signal_cooldown(self, signal: str, cooldown_seconds: int) -> tuple[bool, str]:
-        """Check if same-direction signal is in cooldown"""
+    def is_in_signal_cooldown(self, signal: str, cooldown_seconds: int, instrument: Optional[str] = None) -> tuple[bool, str]:
+        """
+        Check if same-direction signal is in cooldown for a specific instrument.
+        
+        Signal cooldown is per-instrument to prevent whipsaw on the same instrument,
+        but allows trading different instruments with the same signal direction.
+        """
         with self._data_lock:
+            # Per-instrument cooldown (preferred)
+            if instrument and instrument in self._instrument_signals:
+                inst_data = self._instrument_signals[instrument]
+                last_signal = inst_data.get("signal")
+                last_time = inst_data.get("time")
+                
+                if last_signal == signal and last_time:
+                    elapsed = (datetime.now() - last_time).total_seconds()
+                    if elapsed < cooldown_seconds:
+                        remaining = int(cooldown_seconds - elapsed)
+                        return True, f"Same signal ({signal}) cooldown: {remaining}s remaining"
+                
+                return False, "Signal allowed"
+            
+            # Fallback to global cooldown (for backward compatibility / single-instrument mode)
             if self._last_signal is None or self._last_signal_time is None:
                 return False, "No signal cooldown"
             
@@ -234,6 +265,7 @@ class SignalTracker:
             self._last_signal = None
             self._last_signal_time = None
             self._last_loss_time = None
+            self._instrument_signals.clear()
 
 
 # =============================================================================

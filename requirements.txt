@@ -2,8 +2,8 @@
 # Trading Bot Dependencies
 # =============================================================================
 
-# Core Dependencies
-dhanhq>=1.2.0
+# Core Dependencies - Dhan V2 API requires dhanhq >= 2.0.0
+dhanhq>=2.0.0
 pandas>=2.0.0
 pandas-ta>=0.3.14b
 numpy>=1.24.0
@@ -24,11 +24,20 @@ pytest-cov>=4.1.0
 streamlit>=1.28.0
 plotly>=5.18.0
 
+# Chart Generation for Rich Notifications
+matplotlib>=3.7.0
+mplfinance>=0.12.10b0
+
+# PDF Report Generation (optional - for EOD reports)
+# weasyprint>=60.0  # Requires system dependencies (GTK3)
+# pdfkit>=1.0.0     # Requires wkhtmltopdf
+
 # Security
 bcrypt>=4.1.0
 
 # Monitoring
 prometheus-client>=0.19.0
+psutil>=5.9.0
 
 # Utilities
 requests>=2.31.0

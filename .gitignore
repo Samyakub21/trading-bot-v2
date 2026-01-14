@@ -2,7 +2,11 @@
 credentials.json
 trading_config.json
 
-# State files
+# Data folder - runtime files
+data/
+!data/.gitkeep
+
+# State files (legacy - now in data/)
 trade_state_active.json
 trade_state_active.json.bak
 daily_pnl_combined.json
@@ -11,11 +15,16 @@ bot.log
 websocket_status.json
 contract_cache.json
 
+# Generated reports
+reports/
+!reports/.gitkeep
+
 # Python
 __pycache__/
 *.pyc
 *.pyo
 venv/
+.venv/
 .env
 
 # IDE
@@ -28,3 +37,6 @@ venv/
 # OS
 .DS_Store
 Thumbs.db
+
+# Keys
+*.pem

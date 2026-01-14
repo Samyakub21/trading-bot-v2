@@ -11,6 +11,14 @@ from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
 from config import config
+
+# Database import (optional - falls back to JSON if not available)
+try:
+    from database import get_database, DatabaseManager
+    USE_DATABASE = config.get_trading_param('USE_DATABASE', True)
+except ImportError:
+    USE_DATABASE = False
+    DatabaseManager = None
 from instruments import (
     INSTRUMENTS, DEFAULT_INSTRUMENT, MULTI_SCAN_ENABLED,
     get_instruments_to_scan
@@ -21,6 +29,9 @@ from instruments import (
 # =============================================================================
 TELEGRAM_TOKEN = config.TELEGRAM_TOKEN
 TELEGRAM_CHAT_ID = config.TELEGRAM_CHAT_ID
+
+# Signal Bot (separate channel for trade signals)
+SIGNAL_BOT_TOKEN = "8503785442:AAF3knL3oeaRcrdRLWu-Ek_4bLFQX34dbS8"
 
 # State files (configurable via trading_config.json or env vars)
 STATE_FILE = config.STATE_FILE
@@ -71,11 +82,243 @@ def send_alert(msg: str) -> None:
         logging.debug(f"Telegram alert error: {e}")
 
 
+def calculate_resistance_support_zones(
+    df: pd.DataFrame,
+    current_price: float,
+    signal: str,
+    lookback: int = 20
+) -> Dict[str, List[float]]:
+    """
+    Calculate resistance and support zones from price data.
+    
+    Uses swing highs/lows and key price levels to find targets.
+    
+    Args:
+        df: DataFrame with OHLC data
+        current_price: Current price
+        signal: "BUY" or "SELL"
+        lookback: Number of candles to look back
+        
+    Returns:
+        Dict with 'targets' and 'supports' lists
+    """
+    try:
+        if len(df) < lookback:
+            lookback = len(df)
+        
+        recent_data = df.iloc[-lookback:]
+        highs = recent_data['high'].values
+        lows = recent_data['low'].values
+        
+        # Find swing highs (local maxima) - resistance zones
+        swing_highs = []
+        for i in range(1, len(highs) - 1):
+            if highs[i] > highs[i-1] and highs[i] > highs[i+1]:
+                swing_highs.append(highs[i])
+        
+        # Find swing lows (local minima) - support zones
+        swing_lows = []
+        for i in range(1, len(lows) - 1):
+            if lows[i] < lows[i-1] and lows[i] < lows[i+1]:
+                swing_lows.append(lows[i])
+        
+        # Add recent high/low as potential levels
+        recent_high = recent_data['high'].max()
+        recent_low = recent_data['low'].min()
+        
+        if recent_high not in swing_highs:
+            swing_highs.append(recent_high)
+        if recent_low not in swing_lows:
+            swing_lows.append(recent_low)
+        
+        # Sort levels
+        swing_highs = sorted(set(swing_highs))
+        swing_lows = sorted(set(swing_lows), reverse=True)
+        
+        if signal == "BUY":
+            # For BUY: targets are above current price (resistance levels)
+            targets = [h for h in swing_highs if h > current_price]
+            supports = [l for l in swing_lows if l < current_price]
+        else:
+            # For SELL: targets are below current price (support levels)
+            targets = [l for l in swing_lows if l < current_price]
+            supports = [h for h in swing_highs if h > current_price]
+        
+        return {
+            "targets": targets[:5],  # Max 5 targets
+            "supports": supports[:3]  # Max 3 support levels
+        }
+    except Exception as e:
+        logging.debug(f"Error calculating zones: {e}")
+        return {"targets": [], "supports": []}
+
+
+def send_signal_alert(
+    instrument: str,
+    strike: int,
+    option_type: str,
+    entry_price: float,
+    stoploss: float,
+    signal: str,
+    df: Optional[pd.DataFrame] = None,
+    future_price: float = 0,
+    indicators: Optional[Dict[str, Any]] = None,
+    send_chart: bool = True
+) -> None:
+    """
+    Send formatted trade signal to Signal Bot channel with resistance-based targets.
+    
+    Now includes rich notification with chart image showing entry, SL, and indicators.
+    
+    Format:
+    CRUDEOIL 5250 CE
+    BUY AT 210-212
+    SL 195
+    TARGET 220, 230, 245 (Ultimate: 260)
+    
+    Args:
+        instrument: Trading instrument name
+        strike: Option strike price
+        option_type: Option type (CE/PE)
+        entry_price: Option entry price
+        stoploss: Stop loss price (option)
+        signal: Trade signal (BUY/SELL)
+        df: DataFrame with OHLC data for chart generation
+        future_price: Current future price for target calculation
+        indicators: Dict of indicator values to display on chart
+        send_chart: Whether to send chart image (default: True)
+    """
+    try:
+        # Calculate entry range (LTP ± 1%)
+        entry_low = round(entry_price * 0.99, 1)
+        entry_high = round(entry_price * 1.01, 1)
+        
+        # Format option type (CE/PE)
+        opt_display = "CE" if option_type.upper() in ["CE", "CALL"] else "PE"
+        
+        # Calculate targets based on resistance zones
+        targets = []
+        ultimate_target = None
+        
+        if df is not None and future_price > 0:
+            zones = calculate_resistance_support_zones(df, future_price, signal)
+            future_targets = zones.get("targets", [])
+            
+            if future_targets:
+                # Convert future price targets to approximate option price targets
+                # Option price moves roughly 40-60% of futures for ATM options (delta)
+                delta = 0.50  # Approximate delta for ATM
+                
+                for ft in future_targets[:3]:
+                    price_move = abs(ft - future_price)
+                    option_target = entry_price + (price_move * delta)
+                    targets.append(round(option_target, 1))
+                
+                # Ultimate target = strongest resistance (highest for BUY, lowest for SELL)
+                if len(future_targets) > 0:
+                    if signal == "BUY":
+                        max_resistance = max(future_targets)
+                    else:
+                        max_resistance = min(future_targets)
+                    
+                    ultimate_move = abs(max_resistance - future_price)
+                    ultimate_target = round(entry_price + (ultimate_move * delta), 1)
+        
+        # Fallback to risk:reward based targets if no zones found
+        if not targets:
+            risk = abs(entry_price - stoploss)
+            targets = [
+                round(entry_price + risk, 1),        # 1:1 R:R
+                round(entry_price + (risk * 1.5), 1),  # 1.5:1 R:R
+                round(entry_price + (risk * 2), 1)    # 2:1 R:R
+            ]
+            ultimate_target = round(entry_price + (risk * 3), 1)  # 3:1 R:R
+        
+        # Format targets string
+        targets_str = ", ".join([str(t) for t in targets])
+        if ultimate_target and ultimate_target > max(targets):
+            targets_str += f" *(Ultimate: {ultimate_target})*"
+        else:
+            targets_str += "++++"
+        
+        # Format signal message
+        signal_msg = (
+            f"*{instrument} {strike} {opt_display}*\n"
+            f"{signal} AT {entry_low}-{entry_high}\n"
+            f"SL {stoploss}\n"
+            f"TARGET {targets_str}"
+        )
+        
+        # Send to Signal Bot
+        response = requests.get(
+            f"https://api.telegram.org/bot{SIGNAL_BOT_TOKEN}/sendMessage",
+            params={"chat_id": TELEGRAM_CHAT_ID, "text": signal_msg, "parse_mode": "Markdown"},
+            timeout=10
+        )
+        if response.status_code != 200:
+            logging.debug(f"Signal alert failed: {response.status_code}")
+        
+        # === RICH NOTIFICATION: Send chart image ===
+        if send_chart and df is not None and future_price > 0:
+            try:
+                from chart_generator import send_rich_trade_alert
+                
+                # Calculate future SL for chart display
+                if signal == "BUY":
+                    future_sl = future_price - (abs(entry_price - stoploss) * 2)
+                else:
+                    future_sl = future_price + (abs(entry_price - stoploss) * 2)
+                
+                # Convert option targets to future targets for chart
+                future_targets_for_chart = []
+                if targets:
+                    delta = 0.50
+                    for t in targets:
+                        if signal == "BUY":
+                            ft = future_price + abs(t - entry_price) / delta
+                        else:
+                            ft = future_price - abs(t - entry_price) / delta
+                        future_targets_for_chart.append(round(ft, 2))
+                
+                send_rich_trade_alert(
+                    instrument=instrument,
+                    signal=signal,
+                    entry_price=future_price,
+                    stop_loss=future_sl,
+                    df=df,
+                    strike=strike,
+                    option_type=opt_display,
+                    targets=future_targets_for_chart,
+                    indicators=indicators,
+                    option_entry_price=entry_price
+                )
+                logging.debug("Rich trade alert with chart sent successfully")
+            except ImportError:
+                logging.debug("chart_generator not available, skipping chart image")
+            except Exception as chart_error:
+                logging.debug(f"Chart generation failed: {chart_error}")
+                
+    except requests.exceptions.Timeout:
+        logging.debug("Signal alert timeout")
+    except Exception as e:
+        logging.debug(f"Signal alert error: {e}")
+
+
 # =============================================================================
 # STATE MANAGEMENT
 # =============================================================================
 def save_state(data: Dict[str, Any]) -> None:
-    """Transaction-safe state saving with backup"""
+    """Transaction-safe state saving with database support"""
+    # Try database first (ACID compliant)
+    if USE_DATABASE:
+        try:
+            db = get_database()
+            db.save_state(data)
+            return
+        except Exception as e:
+            logging.warning(f"Database save failed, falling back to JSON: {e}")
+    
+    # Fallback to JSON file with transaction-safe approach
     temp_file = STATE_FILE + '.tmp'
     backup_file = STATE_FILE + '.bak'
     
@@ -105,7 +348,18 @@ def save_state(data: Dict[str, Any]) -> None:
 
 
 def load_state() -> Dict[str, Any]:
-    """Load state with fallback to backup"""
+    """Load state with database support and JSON fallback"""
+    # Try database first
+    if USE_DATABASE:
+        try:
+            db = get_database()
+            state = db.load_state()
+            if state.get('status') or state.get('instrument'):
+                return state
+        except Exception as e:
+            logging.warning(f"Database load failed, falling back to JSON: {e}")
+    
+    # Fallback to JSON files
     # Try main state file first
     if os.path.exists(STATE_FILE):
         try:
@@ -145,6 +399,15 @@ def load_daily_pnl() -> Dict[str, Any]:
     """Load daily P&L data, reset if it's a new day"""
     today = datetime.now().strftime("%Y-%m-%d")
     
+    # Try database first
+    if USE_DATABASE:
+        try:
+            db = get_database()
+            return db.get_daily_pnl(today)
+        except Exception as e:
+            logging.warning(f"Database load failed, falling back to JSON: {e}")
+    
+    # Fallback to JSON
     if os.path.exists(DAILY_PNL_FILE):
         try:
             with open(DAILY_PNL_FILE, 'r') as f:
@@ -166,6 +429,15 @@ def save_daily_pnl(data: Dict[str, Any]) -> None:
 
 def update_daily_pnl(pnl_amount: float, is_win: bool) -> Dict[str, Any]:
     """Update daily P&L after a trade closes"""
+    # Try database first (ACID compliant)
+    if USE_DATABASE:
+        try:
+            db = get_database()
+            return db.update_daily_pnl(pnl_amount, is_win)
+        except Exception as e:
+            logging.warning(f"Database update failed, falling back to JSON: {e}")
+    
+    # Fallback to JSON
     daily_data = load_daily_pnl()
     daily_data["pnl"] += pnl_amount
     daily_data["trades"] += 1
@@ -182,6 +454,15 @@ def update_daily_pnl(pnl_amount: float, is_win: bool) -> Dict[str, Any]:
 # =============================================================================
 def load_trade_history() -> List[Dict[str, Any]]:
     """Load historical trade data"""
+    # Try database first
+    if USE_DATABASE:
+        try:
+            db = get_database()
+            return db.get_trade_history()
+        except Exception as e:
+            logging.warning(f"Database load failed, falling back to JSON: {e}")
+    
+    # Fallback to JSON
     if os.path.exists(TRADE_HISTORY_FILE):
         try:
             with open(TRADE_HISTORY_FILE, 'r') as f:
@@ -193,6 +474,16 @@ def load_trade_history() -> List[Dict[str, Any]]:
 
 def save_trade_to_history(trade_data: Dict[str, Any]) -> None:
     """Append trade to historical log"""
+    # Try database first (ACID compliant)
+    if USE_DATABASE:
+        try:
+            db = get_database()
+            db.save_trade(trade_data)
+            return
+        except Exception as e:
+            logging.warning(f"Database save failed, falling back to JSON: {e}")
+    
+    # Fallback to JSON
     history = load_trade_history()
     history.append(trade_data)
     

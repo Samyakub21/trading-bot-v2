@@ -150,36 +150,50 @@ class TestAnalyzeInstrumentSignal:
 # =============================================================================
 
 class TestGetATMOption:
-    """Tests for ATM option selection"""
+    """Tests for ATM option selection - V2 API format"""
     
     @patch('scanner.dhan')
     def test_atm_strike_calculation(self, mock_dhan):
-        """Should calculate correct ATM strike"""
+        """Should calculate correct ATM strike with V2 API format"""
+        # V2 API returns option chain in nested format
         mock_dhan.option_chain.return_value = {
             'status': 'success',
-            'data': [
-                {'strike_price': 6000, 'dr_option_type': 'CE', 'security_id': '12345'},
-                {'strike_price': 6000, 'dr_option_type': 'PE', 'security_id': '12346'},
-                {'strike_price': 6050, 'dr_option_type': 'CE', 'security_id': '12347'},
-            ]
+            'data': {
+                'last_price': 6010,
+                'oc': {
+                    '6000.0': {
+                        'ce': {'security_id': '12345', 'last_price': 150},
+                        'pe': {'security_id': '12346', 'last_price': 140}
+                    },
+                    '6050.0': {
+                        'ce': {'security_id': '12347', 'last_price': 100},
+                        'pe': {'security_id': '12348', 'last_price': 180}
+                    }
+                }
+            }
         }
         
         # BUY signal should get CE option
-        result = get_atm_option("BUY", 6010, "MCX", "464926", "2026-01-16", "OPTFUT", 50)
+        result = get_atm_option("BUY", 6010, "MCX_COMM", "464926", "2026-01-16", "OPTFUT", 50)
         assert result == '12345'
     
     @patch('scanner.dhan')
     def test_put_option_for_sell(self, mock_dhan):
-        """SELL signal should get PE option"""
+        """SELL signal should get PE option with V2 format"""
         mock_dhan.option_chain.return_value = {
             'status': 'success',
-            'data': [
-                {'strike_price': 6000, 'dr_option_type': 'CE', 'security_id': '12345'},
-                {'strike_price': 6000, 'dr_option_type': 'PE', 'security_id': '12346'},
-            ]
+            'data': {
+                'last_price': 6010,
+                'oc': {
+                    '6000.0': {
+                        'ce': {'security_id': '12345', 'last_price': 150},
+                        'pe': {'security_id': '12346', 'last_price': 140}
+                    }
+                }
+            }
         }
         
-        result = get_atm_option("SELL", 6010, "MCX", "464926", "2026-01-16", "OPTFUT", 50)
+        result = get_atm_option("SELL", 6010, "MCX_COMM", "464926", "2026-01-16", "OPTFUT", 50)
         assert result == '12346'
     
     @patch('scanner.dhan')
@@ -187,10 +201,10 @@ class TestGetATMOption:
         """Should return None on API failure"""
         mock_dhan.option_chain.return_value = {
             'status': 'failure',
-            'remarks': 'API error'
+            'errorMessage': 'API error'
         }
         
-        result = get_atm_option("BUY", 6010, "MCX", "464926", "2026-01-16", "OPTFUT", 50)
+        result = get_atm_option("BUY", 6010, "MCX_COMM", "464926", "2026-01-16", "OPTFUT", 50)
         assert result is None
     
     @patch('scanner.dhan')
@@ -198,13 +212,19 @@ class TestGetATMOption:
         """ATM strike should be rounded to nearest strike step"""
         mock_dhan.option_chain.return_value = {
             'status': 'success',
-            'data': [
-                {'strike_price': 6050, 'dr_option_type': 'CE', 'security_id': '12347'},
-            ]
+            'data': {
+                'last_price': 6030,
+                'oc': {
+                    '6050.0': {
+                        'ce': {'security_id': '12347', 'last_price': 100},
+                        'pe': {'security_id': '12348', 'last_price': 180}
+                    }
+                }
+            }
         }
         
         # Price 6030 with step 50 should round to 6050
-        result = get_atm_option("BUY", 6030, "MCX", "464926", "2026-01-16", "OPTFUT", 50)
+        result = get_atm_option("BUY", 6030, "MCX_COMM", "464926", "2026-01-16", "OPTFUT", 50)
         assert result == '12347'
 
 
@@ -213,21 +233,22 @@ class TestGetATMOption:
 # =============================================================================
 
 class TestCheckMarginAvailable:
-    """Tests for margin availability checking"""
+    """Tests for margin availability checking - V2 API format"""
     
     @patch('scanner.dhan')
     def test_sufficient_margin(self, mock_dhan):
         """Should return True when margin is sufficient"""
+        # V2 API uses availableBalance (with correct spelling)
         mock_dhan.get_fund_limits.return_value = {
             'status': 'success',
-            'data': {'availabelBalance': 50000}
+            'data': {'availableBalance': 50000}
         }
         mock_dhan.margin_calculator.return_value = {
             'status': 'success',
             'data': {'totalMargin': 10000}
         }
         
-        ok, msg = check_margin_available("12345", "MCX", 10)
+        ok, msg = check_margin_available("12345", "MCX_COMM", 10)
         assert ok == True
         assert "Margin OK" in msg
     
@@ -236,14 +257,14 @@ class TestCheckMarginAvailable:
         """Should return False when margin is insufficient"""
         mock_dhan.get_fund_limits.return_value = {
             'status': 'success',
-            'data': {'availabelBalance': 5000}
+            'data': {'availableBalance': 5000}
         }
         mock_dhan.margin_calculator.return_value = {
             'status': 'success',
             'data': {'totalMargin': 10000}
         }
         
-        ok, msg = check_margin_available("12345", "MCX", 10)
+        ok, msg = check_margin_available("12345", "MCX_COMM", 10)
         assert ok == False
         assert "Insufficient" in msg
     
@@ -252,10 +273,10 @@ class TestCheckMarginAvailable:
         """Should handle fund API failure gracefully"""
         mock_dhan.get_fund_limits.return_value = {
             'status': 'failure',
-            'remarks': 'API error'
+            'errorMessage': 'API error'
         }
         
-        ok, msg = check_margin_available("12345", "MCX", 10)
+        ok, msg = check_margin_available("12345", "MCX_COMM", 10)
         assert ok == False
 
 
@@ -264,16 +285,18 @@ class TestCheckMarginAvailable:
 # =============================================================================
 
 class TestVerifyOrder:
-    """Tests for order verification"""
+    """Tests for order verification - V2 API format"""
     
     @patch('scanner.dhan')
     def test_successful_order(self, mock_dhan):
-        """Should return True for filled order"""
+        """Should return True for filled order with V2 API fields"""
+        # V2 API uses averageTradedPrice instead of tradedPrice
         mock_dhan.get_order_by_id.return_value = {
             'status': 'success',
             'data': {
                 'orderStatus': 'TRADED',
-                'tradedPrice': 150.50
+                'averageTradedPrice': 150.50,
+                'filledQty': 10
             }
         }
         
@@ -288,12 +311,13 @@ class TestVerifyOrder:
     
     @patch('scanner.dhan')
     def test_rejected_order(self, mock_dhan):
-        """Should return False for rejected order"""
+        """Should return False for rejected order with V2 error fields"""
+        # V2 API uses omsErrorDescription instead of rejectedReason
         mock_dhan.get_order_by_id.return_value = {
             'status': 'success',
             'data': {
                 'orderStatus': 'REJECTED',
-                'rejectedReason': 'Insufficient margin'
+                'omsErrorDescription': 'Insufficient margin'
             }
         }
         

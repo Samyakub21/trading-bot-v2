@@ -23,6 +23,7 @@ import scanner
 # =============================================================================
 CLIENT_ID = config.CLIENT_ID
 ACCESS_TOKEN = config.ACCESS_TOKEN
+# Initialize Dhan client (dhanhq v2.0)
 dhan = dhanhq(CLIENT_ID, ACCESS_TOKEN)
 
 
@@ -303,12 +304,13 @@ def run_manager(active_trade: Dict[str, Any], active_instrument: str) -> None:
 
 
 def place_exit_order(active_trade: Dict[str, Any], exit_reason: str = "MANUAL") -> bool:
-    """Place an exit order for manual/shutdown scenarios"""
+    """Place an exit order for manual/shutdown scenarios (V2 API)"""
     option_ltp = socket_handler.get_option_ltp()
     latest_ltp = socket_handler.get_latest_ltp()
     
     trade_lot_size = active_trade.get("lot_size", 10)
-    trade_exchange_segment = active_trade.get("exchange_segment_str", "MCX")
+    # V2 API: Default to MCX_COMM for commodity options
+    trade_exchange_segment = active_trade.get("exchange_segment_str", "MCX_COMM")
     
     opt_ltp = option_ltp if option_ltp > 0 else active_trade.get("option_entry", 0)
     

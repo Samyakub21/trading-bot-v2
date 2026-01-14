@@ -2,6 +2,7 @@
 # SCANNER - Market Scanning and Signal Analysis
 # =============================================================================
 
+import json
 import logging
 import time
 import threading
@@ -19,19 +20,46 @@ from instruments import (
 )
 from utils import (
     RSI_BULLISH_THRESHOLD, RSI_BEARISH_THRESHOLD, VOLUME_MULTIPLIER,
-    LIMIT_ORDER_BUFFER, send_alert, save_state, get_dynamic_sl,
+    LIMIT_ORDER_BUFFER, send_alert, send_signal_alert, save_state, get_dynamic_sl,
     check_daily_limits, is_market_open, can_place_new_trade, 
     is_instrument_market_open, can_instrument_trade_new,
     COOLDOWN_AFTER_LOSS, SIGNAL_COOLDOWN
 )
+from contract_updater import load_scrip_master
 import socket_handler
 from state_stores import get_signal_tracker
+
+# =============================================================================
+# STRATEGY PATTERN SUPPORT (Optional - for modular strategies)
+# =============================================================================
+USE_STRATEGY_PATTERN = True  # Set to False to use legacy hardcoded logic
+
+try:
+    from strategies import get_strategy, get_available_strategies
+    STRATEGIES_AVAILABLE = True
+except ImportError:
+    STRATEGIES_AVAILABLE = False
+    USE_STRATEGY_PATTERN = False
+    logging.warning("strategies.py not found. Using legacy signal analysis.")
+
+# =============================================================================
+# ECONOMIC CALENDAR INTEGRATION (News Filter)
+# =============================================================================
+try:
+    from economic_calendar import EconomicCalendar
+    _economic_calendar = EconomicCalendar()
+    ECONOMIC_CALENDAR_AVAILABLE = True
+except ImportError:
+    _economic_calendar = None
+    ECONOMIC_CALENDAR_AVAILABLE = False
+    logging.info("economic_calendar.py not found. News filtering disabled.")
 
 # =============================================================================
 # DHAN CLIENT
 # =============================================================================
 CLIENT_ID = config.CLIENT_ID
 ACCESS_TOKEN = config.ACCESS_TOKEN
+# Initialize Dhan client (dhanhq v2.0)
 dhan = dhanhq(CLIENT_ID, ACCESS_TOKEN)
 
 # Threading lock for safe active_trade access
@@ -42,9 +70,9 @@ instrument_lock = threading.Lock()
 _signal_tracker = get_signal_tracker()
 
 
-def update_last_signal(signal: str) -> None:
-    """Update the last signal tracking using SignalTracker"""
-    _signal_tracker.update_signal(signal)
+def update_last_signal(signal: str, instrument: Optional[str] = None) -> None:
+    """Update the last signal tracking using SignalTracker (per-instrument or global)"""
+    _signal_tracker.update_signal(signal, instrument=instrument)
 
 
 def set_last_loss_time() -> None:
@@ -65,17 +93,17 @@ def get_instrument_data(
     instrument_type: Optional[str] = None
 ) -> Tuple[Optional[pd.DataFrame], Optional[pd.DataFrame]]:
     """
-    Fetch and resample OHLCV data for an instrument.
+    Fetch and resample OHLCV data for an instrument using Dhan V2 API.
     
     Can be called in two ways:
     1. By instrument key: get_instrument_data("CRUDEOIL")
-    2. By parameters: get_instrument_data(future_id="464926", exchange_segment_str="MCX", instrument_type="FUTURES")
+    2. By parameters: get_instrument_data(future_id="464926", exchange_segment_str="MCX_COMM", instrument_type="FUTCOM")
     
     Args:
         instrument_key: Key from INSTRUMENTS dict (e.g., "CRUDEOIL", "NIFTY")
         future_id: Security ID for the future contract
-        exchange_segment_str: Exchange segment string (e.g., "MCX", "NSE_FNO")
-        instrument_type: Type of instrument (e.g., "FUTURES", "INDEX")
+        exchange_segment_str: Exchange segment string (e.g., "MCX_COMM", "NSE_FNO") - V2 format
+        instrument_type: Type of instrument (e.g., "FUTCOM", "INDEX") - V2 format
     
     Returns:
         Tuple of (df_15min, df_60min) DataFrames, or (None, None) on failure
@@ -94,17 +122,54 @@ def get_instrument_data(
                 return None, None
             log_context = f"future_id={future_id}"
         
+        # V2 API: intraday_minute_data uses different parameters
+        # Format: security_id, exchange_segment, instrument_type, from_date, to_date
         to_date = datetime.now().strftime('%Y-%m-%d')
         from_date = (datetime.now() - timedelta(days=25)).strftime('%Y-%m-%d')
         
-        data = dhan.intraday_minute_data(future_id, exchange_segment_str, instrument_type, from_date, to_date)
+        # V2 API call for intraday minute data
+        data = dhan.intraday_minute_data(
+            security_id=future_id,
+            exchange_segment=exchange_segment_str,
+            instrument_type=instrument_type,
+            from_date=from_date,
+            to_date=to_date
+        )
         
-        if data['status'] == 'failure':
+        if data.get('status') == 'failure':
+            error_msg = data.get('remarks', data.get('errorMessage', 'Unknown error'))
+            logging.error(f"Data Error for {log_context}: API failure - {error_msg}")
             return None, None
         
-        df = pd.DataFrame(data['data'])
-        df.rename(columns={'o':'open','h':'high','l':'low','c':'close','v':'volume','start_time':'time'}, inplace=True)
-        df['time'] = pd.to_datetime(df['time'])
+        # V2 API returns data in arrays format: open, high, low, close, volume, timestamp
+        raw_data = data.get('data', data)
+        
+        # Handle V2 array-based response format
+        if isinstance(raw_data, dict) and 'open' in raw_data:
+            # V2 format: arrays of values
+            df = pd.DataFrame({
+                'open': raw_data.get('open', []),
+                'high': raw_data.get('high', []),
+                'low': raw_data.get('low', []),
+                'close': raw_data.get('close', []),
+                'volume': raw_data.get('volume', []),
+                'timestamp': raw_data.get('timestamp', raw_data.get('start_Time', []))
+            })
+            # Convert epoch timestamp to datetime
+            df['time'] = pd.to_datetime(df['timestamp'], unit='s')
+        elif isinstance(raw_data, list):
+            # Legacy format: list of dictionaries
+            df = pd.DataFrame(raw_data)
+            df.rename(columns={'o':'open','h':'high','l':'low','c':'close','v':'volume','start_time':'time'}, inplace=True)
+            df['time'] = pd.to_datetime(df['time'])
+        else:
+            logging.error(f"Data Error for {log_context}: Unexpected data format")
+            return None, None
+        
+        if df.empty:
+            logging.error(f"Data Error for {log_context}: Empty dataframe")
+            return None, None
+            
         df.set_index('time', inplace=True)
         
         df_15 = df.resample('15min').agg({'open':'first','high':'max','low':'min','close':'last','volume':'sum'}).dropna()
@@ -151,8 +216,41 @@ def analyze_instrument_signal(
     df_15: pd.DataFrame,
     df_60: pd.DataFrame
 ) -> Optional[Dict[str, Any]]:
-    """Analyze an instrument and return signal info if in trade zone"""
+    """
+    Analyze an instrument and return signal info if in trade zone.
+    
+    Uses the Strategy Pattern if enabled and available, otherwise falls back
+    to the legacy hardcoded logic.
+    """
+    # Use Strategy Pattern if available and enabled
+    if USE_STRATEGY_PATTERN and STRATEGIES_AVAILABLE:
+        try:
+            # Get instrument-specific strategy
+            inst_config = INSTRUMENTS.get(instrument_key, {})
+            strategy_name = inst_config.get("strategy")  # None uses default
+            strategy_params = inst_config.get("strategy_params", {})
+            
+            strategy = get_strategy(instrument_key, strategy_name, strategy_params)
+            signal_info = strategy.analyze(df_15.copy(), df_60.copy())
+            
+            if signal_info:
+                logging.debug(f"[{strategy.name}] {instrument_key}: Signal generated")
+            return signal_info
+            
+        except Exception as e:
+            logging.error(f"Strategy error for {instrument_key}: {e}")
+            # Fall through to legacy logic
+    
+    # Legacy hardcoded logic (backward compatibility)
     try:
+        # Get per-instrument parameters or use defaults
+        inst_config = INSTRUMENTS.get(instrument_key, {})
+        inst_params = inst_config.get("strategy_params", {})
+        
+        rsi_bullish = inst_params.get("rsi_bullish_threshold", RSI_BULLISH_THRESHOLD)
+        rsi_bearish = inst_params.get("rsi_bearish_threshold", RSI_BEARISH_THRESHOLD)
+        volume_mult = inst_params.get("volume_multiplier", VOLUME_MULTIPLIER)
+        
         # Calculate indicators
         df_60['EMA_50'] = ta.ema(df_60['close'], length=50)
         df_15.ta.vwap(append=True)
@@ -168,8 +266,8 @@ def analyze_instrument_signal(
         avg_volume = trigger.get('vol_avg', current_volume)
         rsi_val = trigger['RSI']
         
-        # Volume confirmation
-        volume_confirmed = current_volume >= (avg_volume * VOLUME_MULTIPLIER) if avg_volume > 0 else True
+        # Volume confirmation (using per-instrument multiplier)
+        volume_confirmed = current_volume >= (avg_volume * volume_mult) if avg_volume > 0 else True
         
         signal = None
         signal_strength = 0
@@ -177,17 +275,17 @@ def analyze_instrument_signal(
         ema_50 = trend['EMA_50']
         trend_close = trend['close']
         
-        # BULLISH Signal
-        if (trend_close > ema_50) and (trigger['close'] > vwap_val) and (rsi_val > RSI_BULLISH_THRESHOLD) and volume_confirmed:
+        # BULLISH Signal (using per-instrument thresholds)
+        if (trend_close > ema_50) and (trigger['close'] > vwap_val) and (rsi_val > rsi_bullish) and volume_confirmed:
             signal = "BUY"
-            signal_strength = (rsi_val - RSI_BULLISH_THRESHOLD) + ((trend_close - ema_50) / ema_50 * 100)
+            signal_strength = (rsi_val - rsi_bullish) + ((trend_close - ema_50) / ema_50 * 100)
             if avg_volume > 0:
                 signal_strength += (current_volume / avg_volume - 1) * 10
         
-        # BEARISH Signal
-        elif (trend_close < ema_50) and (trigger['close'] < vwap_val) and (rsi_val < RSI_BEARISH_THRESHOLD) and volume_confirmed:
+        # BEARISH Signal (using per-instrument thresholds)
+        elif (trend_close < ema_50) and (trigger['close'] < vwap_val) and (rsi_val < rsi_bearish) and volume_confirmed:
             signal = "SELL"
-            signal_strength = (RSI_BEARISH_THRESHOLD - rsi_val) + ((ema_50 - trend_close) / ema_50 * 100)
+            signal_strength = (rsi_bearish - rsi_val) + ((ema_50 - trend_close) / ema_50 * 100)
             if avg_volume > 0:
                 signal_strength += (current_volume / avg_volume - 1) * 10
         
@@ -202,6 +300,7 @@ def analyze_instrument_signal(
                 "vwap": vwap_val,
                 "ema_50": ema_50,
                 "signal_strength": signal_strength,
+                "strategy": "LegacyTrendFollowing",
                 "df_15": df_15,
             }
         
@@ -264,6 +363,107 @@ def scan_all_instruments() -> List[Dict[str, Any]]:
     return signals_found
 
 
+def find_option_from_scrip_master(
+    underlying: str,
+    strike_price: float,
+    option_type: str,  # "CE" or "PE"
+    expiry_date: str,
+    exchange: str
+) -> Optional[str]:
+    """
+    Find option security ID directly from the scrip master CSV.
+    This is used as a fallback when the option_chain API doesn't work (e.g., MCX commodities).
+    
+    Args:
+        underlying: e.g., "GOLD", "SILVER", "CRUDEOIL"
+        strike_price: ATM strike price
+        option_type: "CE" for Call, "PE" for Put
+        expiry_date: Target expiry date (may differ from actual option expiry)
+        exchange: Exchange segment string
+    
+    Returns:
+        Security ID string or None
+    """
+    try:
+        contracts = load_scrip_master()
+        if not contracts:
+            logging.warning("Could not load scrip master for option lookup")
+            return None
+        
+        today = datetime.now().date()
+        
+        # Normalize exchange for matching
+        exchange_normalized = exchange.replace("_COMM", "").upper()
+        
+        # Collect all matching options with different expiries
+        matching_options = []
+        
+        for contract in contracts:
+            # Check exchange
+            exch = contract.get('SEM_EXM_EXCH_ID', '').upper()
+            if exchange_normalized == "MCX" and exch != "MCX":
+                continue
+            if exchange_normalized == "NSE_FNO" and exch not in ["NSE", "NFO"]:
+                continue
+            
+            # Check instrument type (options only)
+            inst_type = contract.get('SEM_INSTRUMENT_NAME', '').upper()
+            if inst_type not in ['OPTFUT', 'OPTIDX']:
+                continue
+            
+            # Check trading symbol matches underlying and option type
+            trading_symbol = contract.get('SEM_TRADING_SYMBOL', '').upper()
+            if not trading_symbol.startswith(underlying.upper() + '-'):
+                continue
+            if not trading_symbol.endswith('-' + option_type):
+                continue
+            
+            # Check strike price
+            try:
+                contract_strike = float(contract.get('SEM_STRIKE_PRICE', 0))
+                if abs(contract_strike - strike_price) > 0.01:
+                    continue
+            except (ValueError, TypeError):
+                continue
+            
+            # Parse expiry date
+            expiry_str = contract.get('SEM_EXPIRY_DATE', '')
+            try:
+                for fmt in ['%Y-%m-%d %H:%M:%S', '%Y-%m-%d', '%d-%m-%Y']:
+                    try:
+                        contract_expiry = datetime.strptime(expiry_str, fmt).date()
+                        break
+                    except ValueError:
+                        continue
+                else:
+                    continue
+                
+                # Only consider options expiring in the future
+                if contract_expiry >= today:
+                    matching_options.append({
+                        'security_id': contract.get('SEM_SMST_SECURITY_ID', ''),
+                        'expiry': contract_expiry,
+                        'symbol': trading_symbol
+                    })
+            except Exception:
+                continue
+        
+        if not matching_options:
+            logging.warning(f"No option found in scrip master for {underlying} {strike_price} {option_type}")
+            return None
+        
+        # Sort by expiry (nearest first) and return the nearest one
+        matching_options.sort(key=lambda x: x['expiry'])
+        nearest_option = matching_options[0]
+        
+        logging.debug(f"Found option from scrip master: {nearest_option['symbol']} (exp: {nearest_option['expiry']}) -> ID: {nearest_option['security_id']}")
+        return str(nearest_option['security_id'])
+        
+    except Exception as e:
+        logging.error(f"Error finding option from scrip master: {e}")
+        return None
+
+
 def get_atm_option(
     transaction_type: str,
     current_price: float,
@@ -271,24 +471,103 @@ def get_atm_option(
     future_id: str,
     expiry_date: str,
     option_type: str,
-    strike_step: int
+    strike_step: int,
+    underlying: str = ""
 ) -> Optional[str]:
     """
+    Get ATM option security ID for the given transaction type.
+    
+    V2 API option chain returns data in format:
+    {
+        "data": {
+            "last_price": 24964.25,
+            "oc": {
+                "25000.000000": {
+                    "ce": {...},
+                    "pe": {...}
+                }
+            }
+        }
+    }
+    
     transaction_type: "BUY" for Bullish (returns CE), "SELL" for Bearish (returns PE)
     """
+    atm_strike = round(current_price / strike_step) * strike_step
+    target = "CE" if transaction_type == "BUY" else "PE"
+    target_key = "ce" if target == "CE" else "pe"
+    
     try:
-        atm_strike = round(current_price / strike_step) * strike_step
-        target = "CE" if transaction_type == "BUY" else "PE"
+        # For MCX commodities, the option_chain API doesn't work well
+        # Skip API call and go directly to scrip master lookup
+        is_mcx = exchange_segment_str.upper() in ['MCX', 'MCX_COMM']
         
-        chain = dhan.option_chain(exchange_segment_str, future_id, expiry_date, option_type)
-        if chain['status'] == 'failure':
-            logging.error(f"Option chain fetch failed: {chain.get('remarks', 'Unknown error')}")
-            return None
-
-        for item in chain['data']:
-            if item['strike_price'] == atm_strike and item['dr_option_type'] == target:
-                logging.debug(f"Found ATM option: Strike {atm_strike} {target} -> ID: {item['security_id']}")
-                return item['security_id']
+        if not is_mcx:
+            # V2 API: option_chain takes underlying_security_id, underlying_segment, expiry_date
+            chain = dhan.option_chain(
+                under_security_id=future_id,
+                under_exchange_segment=exchange_segment_str,
+                expiry=expiry_date
+            )
+            
+            if chain.get('status') != 'failure':
+                chain_data = chain.get('data', {})
+                
+                # V2 API returns option chain in 'oc' dictionary keyed by strike price
+                option_chain_dict = chain_data.get('oc', {})
+                
+                # Try to find the ATM strike
+                strike_key = f"{float(atm_strike)}"
+                
+                # Also try integer format
+                if strike_key not in option_chain_dict:
+                    strike_key = str(atm_strike)
+                
+                # Search for strike with float representation
+                if strike_key not in option_chain_dict:
+                    for key in option_chain_dict.keys():
+                        try:
+                            if abs(float(key) - atm_strike) < 0.01:
+                                strike_key = key
+                                break
+                        except ValueError:
+                            continue
+                
+                if strike_key in option_chain_dict:
+                    strike_data = option_chain_dict[strike_key]
+                    option_data = strike_data.get(target_key, {})
+                    
+                    # V2 API includes security_id in option data
+                    security_id = option_data.get('security_id') or option_data.get('securityId')
+                    
+                    if security_id:
+                        logging.debug(f"Found ATM option: Strike {atm_strike} {target} -> ID: {security_id}")
+                        return str(security_id)
+                
+                # Fallback: Try legacy format if V2 format not found
+                if isinstance(chain_data, list):
+                    for item in chain_data:
+                        item_strike = item.get('strike_price', item.get('strikePrice', 0))
+                        item_type = item.get('dr_option_type', item.get('drvOptionType', ''))
+                        if item_strike == atm_strike and item_type == target:
+                            security_id = item.get('security_id', item.get('securityId'))
+                            logging.debug(f"Found ATM option (legacy): Strike {atm_strike} {target} -> ID: {security_id}")
+                            return str(security_id)
+            else:
+                error_msg = chain.get('remarks', chain.get('errorMessage', 'Unknown error'))
+                logging.debug(f"Option chain API failed: {error_msg}, trying scrip master lookup")
+        
+        # Fallback: Look up from scrip master (especially for MCX commodities)
+        if underlying:
+            security_id = find_option_from_scrip_master(
+                underlying=underlying,
+                strike_price=atm_strike,
+                option_type=target,
+                expiry_date=expiry_date,
+                exchange=exchange_segment_str
+            )
+            if security_id:
+                logging.debug(f"Found ATM option from scrip master: Strike {atm_strike} {target} -> ID: {security_id}")
+                return security_id
         
         logging.warning(f"No ATM option found for strike {atm_strike} {target}")
         return None
@@ -311,38 +590,84 @@ def check_margin_available(
     exchange_segment_str: str,
     lot_size: int
 ) -> Tuple[bool, str]:
-    """Check if sufficient margin/funds are available for the trade"""
+    """
+    Check if sufficient funds are available for BUYING an option.
+    
+    For option buying, you pay: Premium (LTP) × Lot Size
+    This is different from futures/option selling which requires SPAN margin.
+    
+    Typical ATM option premiums (approximate):
+    - GOLD: ₹2000-4000/unit × 10 lot = ₹20,000-40,000
+    - CRUDEOIL: ₹40-100/unit × 100 lot = ₹4,000-10,000
+    - SILVER: ₹1000-3000/unit × 30 lot = ₹30,000-90,000
+    - NATURALGAS: ₹3-8/unit × 1250 lot = ₹3,750-10,000
+    - NIFTY: ₹100-300/unit × 25-75 lot = ₹2,500-22,500
+    - BANKNIFTY: ₹100-400/unit × 15-30 lot = ₹1,500-12,000
+    """
     try:
         funds = dhan.get_fund_limits()
         
         if funds.get('status') == 'failure':
-            logging.error(f"Failed to fetch fund limits: {funds.get('remarks', 'Unknown error')}")
+            error_msg = funds.get('remarks', funds.get('errorMessage', 'Unknown error'))
+            logging.error(f"Failed to fetch fund limits: {error_msg}")
             return False, "Could not fetch fund limits"
         
         fund_data = funds.get('data', {})
-        available_balance = float(fund_data.get('availabelBalance', 0))
-        
-        margin_response = dhan.margin_calculator(
-            security_id=option_id,
-            exchange_segment=exchange_segment_str,
-            transaction_type="BUY",
-            quantity=lot_size,
-            product_type="INTRADAY",
-            price=0
+        # V2 API field names for fund limits - try multiple possible field names
+        available_balance = float(
+            fund_data.get('availableBalance', 0) or 
+            fund_data.get('availabelBalance', 0) or  # Legacy typo
+            fund_data.get('withdrawableBalance', 0) or
+            0
         )
         
-        if margin_response.get('status') == 'success':
-            required_margin = float(margin_response.get('data', {}).get('totalMargin', 0))
+        # For option buying, we need to calculate: Premium × Lot Size
+        # Try to get the option's LTP using quote_data
+        try:
+            # Map exchange segment to quote format
+            quote_segment = exchange_segment_str.replace('_COMM', '')  # MCX_COMM -> MCX
+            if quote_segment == 'NSE_FNO':
+                quote_segment = 'NSE_FNO'
             
-            if available_balance >= required_margin:
-                return True, f"Margin OK: Available ₹{available_balance:.2f} >= Required ₹{required_margin:.2f}"
-            else:
-                return False, f"Insufficient margin: Available ₹{available_balance:.2f} < Required ₹{required_margin:.2f}"
+            quote_response = dhan.quote_data({quote_segment: [int(option_id)]})
+            
+            if quote_response.get('status') == 'success':
+                quote_data = quote_response.get('data', {}).get('data', {})
+                # Quote data returns dict with security_id as key
+                option_quote = quote_data.get(str(option_id), quote_data.get(option_id, {}))
+                option_ltp = float(option_quote.get('last_price', 0) or option_quote.get('LTP', 0) or 0)
+                
+                if option_ltp > 0:
+                    # Required funds = Premium × Lot Size (+ small buffer for price movement)
+                    required_funds = option_ltp * lot_size * 1.05  # 5% buffer
+                    
+                    if available_balance >= required_funds:
+                        return True, f"Funds OK: ₹{available_balance:.2f} >= Premium ₹{required_funds:.2f} (LTP: {option_ltp:.2f} × {lot_size})"
+                    else:
+                        return False, f"Insufficient funds: Available ₹{available_balance:.2f} < Premium ₹{required_funds:.2f}"
+        except Exception as e:
+            logging.debug(f"Could not get option LTP: {e}")
+        
+        # Fallback: Estimate based on lot size and typical premiums
+        # These are conservative estimates for ATM options
+        estimated_premium = {
+            10: 35000,     # GOLD: ~₹3500/unit × 10 = ₹35,000
+            100: 8000,     # CRUDEOIL: ~₹80/unit × 100 = ₹8,000
+            30: 45000,     # SILVER: ~₹1500/unit × 30 = ₹45,000
+            1250: 7500,    # NATURALGAS: ~₹6/unit × 1250 = ₹7,500
+            25: 5000,      # NIFTY (old lot): ~₹200/unit × 25 = ₹5,000
+            75: 15000,     # NIFTY (new lot): ~₹200/unit × 75 = ₹15,000
+            65: 13000,     # NIFTY (65 lot): ~₹200/unit × 65 = ₹13,000
+            15: 4500,      # BANKNIFTY: ~₹300/unit × 15 = ₹4,500
+        }
+        
+        # Get estimated premium or use a default
+        fallback_premium = estimated_premium.get(lot_size, 20000)
+        
+        if available_balance >= fallback_premium:
+            return True, f"Balance OK: ₹{available_balance:.2f} (est. premium ~₹{fallback_premium})"
         else:
-            if available_balance >= 10000:
-                return True, f"Balance OK: ₹{available_balance:.2f} (margin calc unavailable)"
-            else:
-                return False, f"Low balance: ₹{available_balance:.2f}"
+            return False, f"Insufficient funds: Available ₹{available_balance:.2f} < Est. Premium ₹{fallback_premium}"
                 
     except KeyError as e:
         logging.error(f"Margin check error: Missing key in response - {e}")
@@ -448,12 +773,16 @@ def verify_order(
                 status = order_data.get('orderStatus', '')
                 
                 if status in ['TRADED', 'FILLED']:
-                    avg_price = order_data.get('tradedPrice', 0)
+                    # V2 API uses averageTradedPrice instead of tradedPrice
+                    avg_price = order_data.get('averageTradedPrice', 0)
+                    if avg_price == 0:
+                        avg_price = order_data.get('tradedPrice', 0)  # Fallback for compatibility
                     logging.info(f"[{action}] Order FILLED @ ₹{avg_price} (attempt {attempt + 1})")
                     return True, {"order_id": order_id, "avg_price": avg_price, "status": status}
                 
                 elif status in ['REJECTED', 'CANCELLED']:
-                    reason = order_data.get('rejectedReason', 'Unknown')
+                    # V2 API uses omsErrorDescription instead of rejectedReason
+                    reason = order_data.get('omsErrorDescription') or order_data.get('rejectedReason', 'Unknown')
                     logging.error(f"[{action}] Order {status}: {reason}")
                     send_alert(f"❌ **ORDER {status}** ({action})\n{reason}")
                     return False, None
@@ -515,7 +844,8 @@ def execute_trade_entry(
     price: float,
     opt_id: str,
     df_15: pd.DataFrame,
-    active_trade: Dict[str, Any]
+    active_trade: Dict[str, Any],
+    atm_strike: int = 0
 ) -> bool:
     """Execute a trade entry for a specific instrument"""
     inst = INSTRUMENTS[inst_key]
@@ -537,10 +867,10 @@ def execute_trade_entry(
     
     if not order_success:
         logging.error(f"❌ {inst_key}: Entry order failed, skipping trade")
-        update_last_signal(signal)
+        update_last_signal(signal, instrument=inst_key)
         return False
     
-    update_last_signal(signal)
+    update_last_signal(signal, instrument=inst_key)
     
     option_entry_price = order_details.get("avg_price", 0)
     actual_order_id = order_details.get("order_id")
@@ -552,6 +882,10 @@ def execute_trade_entry(
     socket_handler.set_option_ltp(option_entry_price)
     
     dynamic_sl = get_dynamic_sl(signal, df_15)
+    
+    # Calculate option SL based on future SL (approximate option price movement)
+    # Option premium SL ~ 70-80% of entry for ATM options
+    option_sl = round(option_entry_price * 0.75, 1)
     
     # Thread-safe update of active_trade
     with trade_lock:
@@ -571,18 +905,32 @@ def execute_trade_entry(
         active_trade["entry_time"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         active_trade["lot_size"] = inst["lot_size"]
         active_trade["exchange_segment_str"] = inst["exchange_segment_str"]
+        active_trade["atm_strike"] = atm_strike
         save_state(active_trade)
     
     risk = abs(price - dynamic_sl)
-    opt_type = "CALL" if signal == "BUY" else "PUT"
-    logging.info(f">>> NEW TRADE: {inst['name']} {opt_type} @ Premium ₹{option_entry_price} | Future: {price} | SL: {dynamic_sl}")
+    opt_type = "CE" if signal == "BUY" else "PE"
+    logging.info(f">>> NEW TRADE: {inst['name']} {atm_strike} {opt_type} @ Premium ₹{option_entry_price} | Future: {price} | SL: {dynamic_sl}")
     
+    # Send standard trade alert
     send_alert(
-        f"🚀 **{inst['name']} {opt_type} ENTERED**\n"
+        f"🚀 **{inst['name']} {atm_strike} {opt_type} ENTERED**\n"
         f"Option Premium: ₹{option_entry_price}\n"
         f"Future: {price}\n"
         f"SL: {dynamic_sl}\n"
         f"Risk: {risk} pts"
+    )
+    
+    # Send signal alert to Signal Bot channel (with resistance-based targets)
+    send_signal_alert(
+        instrument=inst_key,
+        strike=atm_strike,
+        option_type=opt_type,
+        entry_price=option_entry_price,
+        stoploss=option_sl,
+        signal=signal,
+        df=df_15,
+        future_price=price
     )
     
     return True
@@ -592,9 +940,143 @@ def run_scanner(active_trade: Dict[str, Any], active_instrument: str) -> None:
     """Main scanner loop"""
     logging.info(">>> Scanner Started (Multi-Instrument Mode)" if MULTI_SCAN_ENABLED else ">>> Scanner Started (Single Instrument)")
     
+    # Track last config reload time
+    last_config_reload = datetime.now()
+    config_reload_interval = 60  # Reload config every 60 seconds
+    
+    # Signal files for dashboard integration
+    from pathlib import Path
+    DATA_DIR = Path(__file__).parent
+    MANUAL_TRADE_SIGNAL_FILE = DATA_DIR / "manual_trade_signal.json"
+    EMERGENCY_EXIT_SIGNAL_FILE = DATA_DIR / "emergency_exit_signal.json"
+    
     while not socket_handler.is_shutdown():
         try:
+            # === RELOAD CONFIG PERIODICALLY ===
+            if (datetime.now() - last_config_reload).total_seconds() >= config_reload_interval:
+                config.reload_trading_config()
+                last_config_reload = datetime.now()
+                logging.debug("📝 Trading config reloaded")
+            
+            # === CHECK FOR EMERGENCY EXIT SIGNAL ===
+            if EMERGENCY_EXIT_SIGNAL_FILE.exists() and active_trade["status"]:
+                try:
+                    with open(EMERGENCY_EXIT_SIGNAL_FILE, 'r') as f:
+                        exit_signal = json.load(f)
+                    
+                    logging.warning(f"🚨 EMERGENCY EXIT requested by {exit_signal.get('requested_by', 'dashboard')}")
+                    send_alert(f"🚨 **EMERGENCY EXIT** requested via dashboard")
+                    
+                    # Import manager to close the trade
+                    from manager import place_exit_order
+                    exit_success = place_exit_order(active_trade, "EMERGENCY_EXIT")
+                    
+                    if exit_success:
+                        logging.info("✅ Emergency exit completed successfully")
+                    else:
+                        logging.error("❌ Emergency exit order failed - manual intervention needed!")
+                        send_alert("🚨 **CRITICAL**: Emergency exit failed! Check positions manually.")
+                    
+                    # Remove the signal file
+                    EMERGENCY_EXIT_SIGNAL_FILE.unlink()
+                except Exception as e:
+                    logging.error(f"Error processing emergency exit: {e}")
+                    # Try to remove corrupted signal file
+                    try:
+                        EMERGENCY_EXIT_SIGNAL_FILE.unlink()
+                    except:
+                        pass
+            
+            # === CHECK FOR MANUAL TRADE SIGNAL ===
+            if MANUAL_TRADE_SIGNAL_FILE.exists() and not active_trade["status"]:
+                try:
+                    with open(MANUAL_TRADE_SIGNAL_FILE, 'r') as f:
+                        manual_signal = json.load(f)
+                    
+                    inst_key = manual_signal.get("instrument")
+                    signal = manual_signal.get("signal")
+                    
+                    if inst_key and signal and inst_key in INSTRUMENTS:
+                        logging.info(f"📝 MANUAL TRADE signal received: {inst_key} {signal}")
+                        send_alert(f"📝 **MANUAL TRADE** signal received\n{inst_key} {signal}")
+                        
+                        inst = INSTRUMENTS[inst_key]
+                        price = manual_signal.get("future_price", 0)
+                        atm_strike = manual_signal.get("atm_strike", 0)
+                        
+                        # Get option ID
+                        opt_id = get_atm_option(
+                            signal, price,
+                            inst["exchange_segment_str"],
+                            inst["future_id"],
+                            inst["expiry_date"],
+                            inst["option_type"],
+                            inst["strike_step"],
+                            underlying=inst_key
+                        )
+                        
+                        if opt_id:
+                            # Check margin
+                            margin_ok, margin_msg = check_margin_available(opt_id, inst["exchange_segment_str"], inst["lot_size"])
+                            
+                            if margin_ok:
+                                # Get instrument data for proper SL calculation
+                                df_15, df_60 = get_instrument_data(inst_key)
+                                if df_15 is None:
+                                    df_15 = pd.DataFrame()  # Empty df as fallback
+                                
+                                # Execute the manual trade
+                                trade_executed = execute_trade_entry(
+                                    inst_key=inst_key,
+                                    signal=signal,
+                                    price=price,
+                                    opt_id=opt_id,
+                                    df_15=df_15,
+                                    active_trade=active_trade,
+                                    atm_strike=atm_strike
+                                )
+                                
+                                if trade_executed:
+                                    logging.info(f"✅ Manual trade executed: {inst_key} {signal}")
+                                else:
+                                    logging.error(f"❌ Manual trade execution failed")
+                                    send_alert(f"❌ **MANUAL TRADE FAILED**\n{inst_key} {signal}")
+                            else:
+                                logging.warning(f"❌ Manual trade skipped - insufficient margin: {margin_msg}")
+                                send_alert(f"⚠️ **MANUAL TRADE SKIPPED**\n{margin_msg}")
+                        else:
+                            logging.error(f"❌ Could not find option for manual trade")
+                            send_alert(f"❌ **MANUAL TRADE FAILED**\nCould not find option contract")
+                    
+                    # Remove the signal file regardless of outcome
+                    MANUAL_TRADE_SIGNAL_FILE.unlink()
+                    
+                except Exception as e:
+                    logging.error(f"Error processing manual trade signal: {e}")
+                    # Try to remove corrupted signal file
+                    try:
+                        MANUAL_TRADE_SIGNAL_FILE.unlink()
+                    except:
+                        pass
+            
             # === PRE-TRADE CHECKS (GENERAL) ===
+            
+            # Check 0: Economic calendar / News filter
+            if ECONOMIC_CALENDAR_AVAILABLE and _economic_calendar:
+                should_pause, pause_event = _economic_calendar.should_pause_trading()
+                if should_pause:
+                    logging.info(f"📰 Trading paused due to economic event: {pause_event.get('title', 'Unknown')}")
+                    # Log upcoming events periodically (once per hour)
+                    if not hasattr(run_scanner, '_last_calendar_log') or \
+                       (datetime.now() - run_scanner._last_calendar_log).total_seconds() > 3600:
+                        upcoming = _economic_calendar.get_upcoming_events(hours_ahead=4)
+                        if upcoming:
+                            logging.info(f"📅 Upcoming high-impact events ({len(upcoming)}):")
+                            for evt in upcoming[:3]:
+                                logging.info(f"   - {evt.get('title', 'N/A')} @ {evt.get('date', 'N/A')}")
+                        run_scanner._last_calendar_log = datetime.now()
+                    time.sleep(60)  # Check again in 1 minute
+                    continue
             
             # Check 1: Daily limits
             within_limits, limits_msg = check_daily_limits()
@@ -627,20 +1109,25 @@ def run_scanner(active_trade: Dict[str, Any], active_instrument: str) -> None:
                         price = signal_info["price"]
                         df_15 = signal_info["df_15"]
                         
-                        # Check signal cooldown (using SignalTracker)
-                        in_signal_cooldown, signal_msg = _signal_tracker.is_in_signal_cooldown(signal, SIGNAL_COOLDOWN)
+                        # Check signal cooldown per-instrument (prevents whipsaw on same instrument)
+                        in_signal_cooldown, signal_msg = _signal_tracker.is_in_signal_cooldown(signal, SIGNAL_COOLDOWN, instrument=inst_key)
                         if in_signal_cooldown:
                             logging.info(f"⏳ {inst_key}: {signal_msg}")
                             continue
                         
                         inst = INSTRUMENTS[inst_key]
+                        
+                        # Calculate ATM strike for the signal alert
+                        atm_strike = round(price / inst["strike_step"]) * inst["strike_step"]
+                        
                         opt_id = get_atm_option(
                             signal, price,
                             inst["exchange_segment_str"],
                             inst["future_id"],
                             inst["expiry_date"],
                             inst["option_type"],
-                            inst["strike_step"]
+                            inst["strike_step"],
+                            underlying=inst_key
                         )
                         
                         if not opt_id:
@@ -651,7 +1138,7 @@ def run_scanner(active_trade: Dict[str, Any], active_instrument: str) -> None:
                         if not margin_ok:
                             logging.warning(f"💰 {inst_key}: {margin_msg}")
                             send_alert(f"⚠️ **TRADE SKIPPED** ({inst_key})\n{margin_msg}")
-                            update_last_signal(signal)
+                            update_last_signal(signal, instrument=inst_key)
                             continue
                         
                         logging.info(f"💰 {inst_key}: {margin_msg}")
@@ -662,7 +1149,8 @@ def run_scanner(active_trade: Dict[str, Any], active_instrument: str) -> None:
                             price=price,
                             opt_id=opt_id,
                             df_15=df_15,
-                            active_trade=active_trade
+                            active_trade=active_trade,
+                            atm_strike=atm_strike
                         )
                         
                         if trade_executed:
@@ -693,12 +1181,15 @@ def run_scanner(active_trade: Dict[str, Any], active_instrument: str) -> None:
                             signal = signal_info["signal"]
                             price = signal_info["price"]
                             
-                            # Check signal cooldown (using SignalTracker)
-                            in_signal_cooldown, signal_msg = _signal_tracker.is_in_signal_cooldown(signal, SIGNAL_COOLDOWN)
+                            # Check signal cooldown per-instrument (prevents whipsaw on same instrument)
+                            in_signal_cooldown, signal_msg = _signal_tracker.is_in_signal_cooldown(signal, SIGNAL_COOLDOWN, instrument=active_instrument)
                             if in_signal_cooldown:
-                                logging.info(f"⏳ {signal_msg}")
+                                logging.info(f"⏳ {active_instrument}: {signal_msg}")
                                 time.sleep(60)
                                 continue
+                            
+                            # Calculate ATM strike for the signal alert
+                            atm_strike = round(price / inst["strike_step"]) * inst["strike_step"]
                             
                             opt_id = get_atm_option(
                                 signal, price,
@@ -706,15 +1197,16 @@ def run_scanner(active_trade: Dict[str, Any], active_instrument: str) -> None:
                                 inst["future_id"],
                                 inst["expiry_date"],
                                 inst["option_type"],
-                                inst["strike_step"]
+                                inst["strike_step"],
+                                underlying=active_instrument
                             )
                             
                             if opt_id:
                                 margin_ok, margin_msg = check_margin_available(opt_id, inst["exchange_segment_str"], inst["lot_size"])
                                 if not margin_ok:
-                                    logging.warning(f"💰 {margin_msg}")
-                                    send_alert(f"⚠️ **TRADE SKIPPED**\n{margin_msg}")
-                                    update_last_signal(signal)
+                                    logging.warning(f"💰 {active_instrument}: {margin_msg}")
+                                    send_alert(f"⚠️ **TRADE SKIPPED** ({active_instrument})\n{margin_msg}")
+                                    update_last_signal(signal, instrument=active_instrument)
                                     time.sleep(60)
                                     continue
                                 
@@ -726,7 +1218,8 @@ def run_scanner(active_trade: Dict[str, Any], active_instrument: str) -> None:
                                     price=price,
                                     opt_id=opt_id,
                                     df_15=df_15,
-                                    active_trade=active_trade
+                                    active_trade=active_trade,
+                                    atm_strike=atm_strike
                                 )
 
             time.sleep(60)

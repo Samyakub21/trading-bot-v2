@@ -33,17 +33,17 @@ def mock_dhan_client():
 
 @pytest.fixture
 def mock_instruments():
-    """Complete instrument configuration"""
+    """Complete instrument configuration - V2 API format"""
     return {
         "CRUDEOIL": {
             "name": "CRUDE OIL",
             "exchange_segment_int": 5,
-            "exchange_segment_str": "MCX",
+            "exchange_segment_str": "MCX_COMM",  # V2 API format
             "future_id": "464926",
             "lot_size": 10,
             "strike_step": 50,
             "expiry_date": "2026-01-16",
-            "instrument_type": "FUTURES",
+            "instrument_type": "FUTCOM",  # V2 API format
             "option_type": "OPTFUT",
             "market_start": "09:00",
             "market_end": "23:30",
@@ -73,7 +73,7 @@ def empty_trade_state():
 
 @pytest.fixture
 def active_buy_trade():
-    """Active BUY trade state"""
+    """Active BUY trade state - V2 API format"""
     return {
         "status": True,
         "type": "BUY",
@@ -85,7 +85,7 @@ def active_buy_trade():
         "option_id": "12345",
         "option_entry": 150,
         "lot_size": 10,
-        "exchange_segment_str": "MCX",
+        "exchange_segment_str": "MCX_COMM",  # V2 API format
         "entry_time": "2026-01-10 10:00:00"
     }
 
@@ -108,16 +108,17 @@ def mock_order_response():
 
 @pytest.fixture
 def mock_position_response():
-    """Mock positions API response"""
+    """Mock positions API response - V2 API format"""
     return {
         'status': 'success',
         'data': [
             {
                 'securityId': '12345',
                 'tradingSymbol': 'CRUDEOIL26JAN6000CE',
-                'exchangeSegment': 'MCX',
+                'exchangeSegment': 'MCX_COMM',  # V2 API format
                 'netQty': 10,
-                'averagePrice': 150.0,
+                'buyAvg': 150.0,  # V2 uses buyAvg/sellAvg
+                'sellAvg': 0.0,
                 'unrealizedProfit': 200.0,
                 'productType': 'INTRADAY'
             }
@@ -127,14 +128,14 @@ def mock_position_response():
 
 @pytest.fixture
 def mock_order_status_response():
-    """Mock order status check response"""
+    """Mock order status check response - V2 API format"""
     return {
         'status': 'success',
         'data': {
             'orderId': 'ORDER123456',
             'orderStatus': 'TRADED',
             'tradedQuantity': 10,
-            'tradedPrice': 150.0
+            'averageTradedPrice': 150.0  # V2 field name
         }
     }
 

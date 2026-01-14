@@ -17,7 +17,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 @pytest.fixture
 def active_buy_trade():
-    """Create sample active BUY trade"""
+    """Create sample active BUY trade - V2 API format"""
     return {
         "status": True,
         "type": "BUY",
@@ -29,14 +29,14 @@ def active_buy_trade():
         "option_id": "12345",
         "option_entry": 150,
         "lot_size": 10,
-        "exchange_segment_str": "MCX",
+        "exchange_segment_str": "MCX_COMM",  # V2 API format
         "entry_time": "2026-01-10 10:00:00"
     }
 
 
 @pytest.fixture
 def active_sell_trade():
-    """Create sample active SELL trade"""
+    """Create sample active SELL trade - V2 API format"""
     return {
         "status": True,
         "type": "SELL",
@@ -48,7 +48,7 @@ def active_sell_trade():
         "option_id": "12346",
         "option_entry": 150,
         "lot_size": 10,
-        "exchange_segment_str": "MCX",
+        "exchange_segment_str": "MCX_COMM",  # V2 API format
         "entry_time": "2026-01-10 10:00:00"
     }
 

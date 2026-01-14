@@ -14,6 +14,12 @@ from instruments import INSTRUMENTS, MULTI_SCAN_ENABLED, get_instruments_to_scan
 from config import config
 
 # =============================================================================
+# DHAN CREDENTIALS
+# =============================================================================
+CLIENT_ID = config.CLIENT_ID
+ACCESS_TOKEN = config.ACCESS_TOKEN
+
+# =============================================================================
 # GLOBAL SOCKET STATE
 # =============================================================================
 MARKET_FEED = None
@@ -133,11 +139,16 @@ def start_socket(client_id: str, access_token: str, active_instrument: str, acti
     for inst in instruments:
         logging.debug(f"   -> Exchange: {inst[0]}, Security: {inst[1]}")
     
-    MARKET_FEED = marketfeed.DhanFeed(client_id, access_token, instruments, version)
+    # DhanFeed uses client_id, access_token (dhanhq v2.0)
+    MARKET_FEED = marketfeed.DhanFeed(CLIENT_ID, ACCESS_TOKEN, instruments, version)
     
     # Start heartbeat monitor in separate thread
     heartbeat_thread = threading.Thread(target=socket_heartbeat_monitor, daemon=True)
     heartbeat_thread.start()
+    
+    # Exponential backoff variables
+    retry_delay = 2
+    max_delay = 60
     
     while not SHUTDOWN_EVENT.is_set():
         try:
@@ -149,9 +160,13 @@ def start_socket(client_id: str, access_token: str, active_instrument: str, acti
                 except Exception as e:
                     logging.debug(f"Error closing connection: {e}")
                 
-                time.sleep(config.RECONNECT_DELAY_SECONDS)
+                logging.info(f"Retrying in {retry_delay} seconds...")
+                time.sleep(retry_delay)
+                retry_delay = min(retry_delay * 2, max_delay)  # Double the wait time
+                
                 instruments = get_all_instrument_subscriptions(active_instrument)
-                MARKET_FEED = marketfeed.DhanFeed(client_id, access_token, instruments, version)
+                # DhanFeed uses client_id, access_token (dhanhq v2.0)
+                MARKET_FEED = marketfeed.DhanFeed(CLIENT_ID, ACCESS_TOKEN, instruments, version)
                 SOCKET_RECONNECT_EVENT.clear()
                 logging.info("✅ Socket reconnected successfully")
             
@@ -159,9 +174,11 @@ def start_socket(client_id: str, access_token: str, active_instrument: str, acti
             response = MARKET_FEED.get_data()
             if response and 'LTP' in response:
                 on_ticks(MARKET_FEED, response, active_instrument, active_trade)
+                retry_delay = 2  # Reset on success
         except Exception as e:
-            logging.error(f"Socket Error: {e}")
-            time.sleep(5)
+            logging.error(f"Connection failed: {e}. Retrying in {retry_delay} seconds...")
+            time.sleep(retry_delay)
+            retry_delay = min(retry_delay * 2, max_delay)  # Double the wait time
     
     # Graceful shutdown
     logging.info("🔌 Socket shutting down...")
@@ -220,4 +237,4 @@ def is_shutdown() -> bool:
 
 def should_process_tick(now_ms: int) -> bool:
     """Check if the tick should be processed based on the time interval"""
-    return (now_ms - LAST_TICK_TIME_MS) >= config.MIN_TICK_INTERVAL_MS
+    return (now_ms - LAST_TICK_TIME) >= config.MIN_TICK_INTERVAL_MS
