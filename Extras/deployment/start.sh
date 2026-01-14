@@ -29,4 +29,11 @@ fi
 
 # Run the bot
 echo "Starting Trading Bot..."
+
+# Perform simple file backup before start (safety first)
+if [ -f "data/trading_bot.db" ]; then
+    mkdir -p Extras/backup
+    cp "data/trading_bot.db" "Extras/backup/trading_bot_prestart_$(date +%Y%m%d_%H%M%S).db"
+fi
+
 python Tradebot.py

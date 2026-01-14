@@ -89,6 +89,7 @@ class TradeBotConfig:
     volume_multiplier: float = VOLUME_MULTIPLIER
     auto_square_off_buffer: int = AUTO_SQUARE_OFF_BUFFER
     limit_order_buffer: float = LIMIT_ORDER_BUFFER
+    auto_close_on_shutdown: bool = True  # New config option
 
 
 class TradingBot:
@@ -160,11 +161,9 @@ class TradingBot:
                     f"⚠️ MANUAL INTERVENTION MAY BE REQUIRED"
                 )
                 
-                # Attempt to close position
-                user_input = input("\n⚠️ Open position detected! Close position before shutdown? (y/n): ").strip().lower()
-                
-                if user_input == 'y':
-                    logging.info("Attempting to close open position...")
+                # Check config instead of input
+                if self.config.auto_close_on_shutdown: 
+                    logging.info("Auto-closing open position due to shutdown...")
                     
                     try:
                         success = manager.place_exit_order(self.active_trade, f"SHUTDOWN ({reason})")
@@ -283,6 +282,14 @@ class TradingBot:
         display_performance_report(days=30)
         time.sleep(1)
         display_performance_report()
+
+        # Perform database backup on startup
+        try:
+            from database import DatabaseManager
+            db_manager = DatabaseManager()
+            db_manager.backup_database()
+        except Exception as e:
+            logging.warning(f"Startup backup failed: {e}")
         
         # Check market status at startup
         if MULTI_SCAN_ENABLED:

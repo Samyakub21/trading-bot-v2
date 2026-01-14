@@ -307,6 +307,61 @@ class DatabaseManager:
                     "wins": 0,
                     "losses": 0
                 }
+
+    # =========================================================================
+    # BACKUP METHODS
+    # =========================================================================
+    def backup_database(self, backup_dir: Optional[str] = None) -> str:
+        """
+        Create a backup of the current database.
+        
+        Args:
+            backup_dir: Directory to save backup to. Defaults to 'Extras/backup'
+            
+        Returns:
+            Path to the backup file
+        """
+        if backup_dir is None:
+             # Default to Extras/backup relative to project root
+            backup_dir = Path(__file__).parent.parent / 'Extras' / 'backup'
+        
+        backup_path = Path(backup_dir)
+        backup_path.mkdir(parents=True, exist_ok=True)
+        
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"trading_bot_backup_{timestamp}.db"
+        target_file = backup_path / filename
+        
+        try:
+            # Safely flush WAL file to disk before copying
+            with self.get_cursor(commit=True) as cursor:
+                cursor.execute("PRAGMA wal_checkpoint(FULL)")
+            
+            # Use SQLite Online Backup API if available, else file copy
+            import shutil
+            shutil.copy2(self.db_path, target_file)
+            
+            logging.info(f"✅ Database backup created: {target_file}")
+            
+            # Clean up old backups (keep last 7 days)
+            self._cleanup_old_backups(backup_path)
+            
+            return str(target_file)
+        except Exception as e:
+            logging.error(f"❌ Database backup failed: {e}")
+            return ""
+
+    def _cleanup_old_backups(self, backup_path: Path, days: int = 7) -> None:
+        """Remove backups older than N days"""
+        try:
+            cutoff = datetime.now() - timedelta(days=days)
+            for item in backup_path.glob("trading_bot_backup_*.db"):
+                if item.stat().st_mtime < cutoff.timestamp():
+                    item.unlink()
+                    logging.debug(f"Removed old backup: {item.name}")
+        except Exception as e:
+            logging.warning(f"Backup cleanup error: {e}")
+
     
     def update_daily_pnl(
         self,

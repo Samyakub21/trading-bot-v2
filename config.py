@@ -19,7 +19,7 @@ DATA_DIR.mkdir(exist_ok=True)
 
 DEFAULT_TRADING_CONFIG = {
     # Risk Management
-    "MAX_DAILY_LOSS": 5000,           # Maximum loss per day in INR
+    "MAX_DAILY_LOSS": 2000,           # Maximum loss per day in INR
     "MAX_TRADES_PER_DAY": 5,          # Maximum number of trades per day
     "COOLDOWN_AFTER_LOSS": 300,       # Wait 5 minutes after a loss before next trade
     "SIGNAL_COOLDOWN": 900,           # 15 minutes cooldown for same direction signal
@@ -33,6 +33,9 @@ DEFAULT_TRADING_CONFIG = {
     # Order Execution
     "LIMIT_ORDER_BUFFER": 0.01,       # 1% buffer for limit orders
     
+    # Paper Trading / Dry Run
+    "PAPER_TRADING": True,           # Simulate trades without placing orders
+    
     # Database Configuration
     "USE_DATABASE": True,             # Use SQLite database instead of JSON files
     "DATABASE_PATH": str(DATA_DIR / "trading_bot.db"),  # SQLite database file path
@@ -45,12 +48,12 @@ DEFAULT_TRADING_CONFIG = {
     # Instrument Configuration
     "ENABLED_INSTRUMENTS": ["CRUDEOIL", "NATURALGAS", "GOLD", "SILVER", "NIFTY", "BANKNIFTY"],
     "INSTRUMENT_PRIORITY": {
-        "CRUDEOIL": 1,      # Highest priority
-        "GOLD": 2,
-        "SILVER": 3,
+        "CRUDEOIL": 3,      
+        "GOLD": 5,
+        "SILVER": 6,          # Lowest priority
         "NATURALGAS": 4,
-        "NIFTY": 5,
-        "BANKNIFTY": 6      # Lowest priority
+        "NIFTY": 1,            # Highest priority
+        "BANKNIFTY": 2      
     },
     
     # Per-Instrument Custom Settings (overrides global settings)

@@ -308,15 +308,28 @@ def run_manager(active_trade: Dict[str, Any], active_instrument: str) -> None:
                 
                 squareoff_limit_price = round(opt_ltp * (1 - LIMIT_ORDER_BUFFER), 2)
                 
-                exit_response = dhan.place_order(
-                    security_id=active_trade["option_id"],
-                    exchange_segment=trade_exchange_segment,
-                    transaction_type=dhan.SELL,
-                    quantity=trade_lot_size,
-                    order_type=dhan.LIMIT,
-                    product_type=dhan.INTRADAY,
-                    price=squareoff_limit_price
-                )
+                # Check for Paper Trading
+                is_paper_trading = config.get_trading_param("PAPER_TRADING", False)
+                
+                if is_paper_trading:
+                    logging.info(f"📝 PAPER TRADING: Placing SQUARE-OFF EXIT order @ ₹{squareoff_limit_price}")
+                    exit_response = {
+                        "status": "success", 
+                        "data": {
+                            "orderId": f"PAPER_EXIT_SQ_{int(time.time()*1000)}",
+                            "price": squareoff_limit_price
+                        }
+                    }
+                else:
+                    exit_response = dhan.place_order(
+                        security_id=active_trade["option_id"],
+                        exchange_segment=trade_exchange_segment,
+                        transaction_type=dhan.SELL,
+                        quantity=trade_lot_size,
+                        order_type=dhan.LIMIT,
+                        product_type=dhan.INTRADAY,
+                        price=squareoff_limit_price
+                    )
                 
                 exit_success, exit_details = scanner.verify_order(exit_response, "EXIT-AUTO-SQUAREOFF")
                 exit_price = exit_details.get("avg_price", opt_ltp) if exit_success else opt_ltp
@@ -347,15 +360,28 @@ def run_manager(active_trade: Dict[str, Any], active_instrument: str) -> None:
                 
                 exit_limit_price = round(opt_ltp * (1 - LIMIT_ORDER_BUFFER), 2)
                 
-                exit_response = dhan.place_order(
-                    security_id=active_trade["option_id"],
-                    exchange_segment=trade_exchange_segment,
-                    transaction_type=dhan.SELL,
-                    quantity=trade_lot_size,
-                    order_type=dhan.LIMIT,
-                    product_type=dhan.INTRADAY,
-                    price=exit_limit_price
-                )
+                # Check for Paper Trading
+                is_paper_trading = config.get_trading_param("PAPER_TRADING", False)
+                
+                if is_paper_trading:
+                    logging.info(f"📝 PAPER TRADING: Placing SL EXIT order @ ₹{exit_limit_price}")
+                    exit_response = {
+                        "status": "success", 
+                        "data": {
+                            "orderId": f"PAPER_EXIT_SL_{int(time.time()*1000)}",
+                            "price": exit_limit_price
+                        }
+                    }
+                else:
+                    exit_response = dhan.place_order(
+                        security_id=active_trade["option_id"],
+                        exchange_segment=trade_exchange_segment,
+                        transaction_type=dhan.SELL,
+                        quantity=trade_lot_size,
+                        order_type=dhan.LIMIT,
+                        product_type=dhan.INTRADAY,
+                        price=exit_limit_price
+                    )
                 
                 exit_success, exit_details = scanner.verify_order(exit_response, "EXIT-SL")
                 
@@ -389,15 +415,28 @@ def run_manager(active_trade: Dict[str, Any], active_instrument: str) -> None:
                 
                 target_exit_price = round(opt_ltp * (1 - LIMIT_ORDER_BUFFER), 2)
                 
-                exit_response = dhan.place_order(
-                    security_id=active_trade["option_id"], 
-                    exchange_segment=trade_exchange_segment, 
-                    transaction_type=dhan.SELL, 
-                    quantity=trade_lot_size, 
-                    order_type=dhan.LIMIT, 
-                    product_type=dhan.INTRADAY, 
-                    price=target_exit_price
-                )
+                # Check for Paper Trading
+                is_paper_trading = config.get_trading_param("PAPER_TRADING", False)
+                
+                if is_paper_trading:
+                    logging.info(f"📝 PAPER TRADING: Placing TARGET EXIT order @ ₹{target_exit_price}")
+                    exit_response = {
+                        "status": "success", 
+                        "data": {
+                            "orderId": f"PAPER_EXIT_TRGT_{int(time.time()*1000)}",
+                            "price": target_exit_price
+                        }
+                    }
+                else:
+                    exit_response = dhan.place_order(
+                        security_id=active_trade["option_id"], 
+                        exchange_segment=trade_exchange_segment, 
+                        transaction_type=dhan.SELL, 
+                        quantity=trade_lot_size, 
+                        order_type=dhan.LIMIT, 
+                        product_type=dhan.INTRADAY, 
+                        price=target_exit_price
+                    )
                 
                 exit_success, exit_details = scanner.verify_order(exit_response, "EXIT-TARGET")
                 exit_price = exit_details.get("avg_price", opt_ltp) if exit_success else opt_ltp
@@ -450,15 +489,28 @@ def place_exit_order(active_trade: Dict[str, Any], exit_reason: str = "MANUAL") 
     
     exit_limit_price = round(opt_ltp * (1 - LIMIT_ORDER_BUFFER), 2)
     
-    exit_response = dhan.place_order(
-        security_id=active_trade["option_id"],
-        exchange_segment=trade_exchange_segment,
-        transaction_type=dhan.SELL,
-        quantity=trade_lot_size,
-        order_type=dhan.LIMIT,
-        product_type=dhan.INTRADAY,
-        price=exit_limit_price
-    )
+    # Check for Paper Trading
+    is_paper_trading = config.get_trading_param("PAPER_TRADING", False)
+    
+    if is_paper_trading:
+        logging.info(f"📝 PAPER TRADING: Placing EXIT order ({exit_reason}) @ ₹{exit_limit_price}")
+        exit_response = {
+            "status": "success", 
+            "data": {
+                "orderId": f"PAPER_EXIT_{int(time.time()*1000)}",
+                "price": exit_limit_price
+            }
+        }
+    else:
+        exit_response = dhan.place_order(
+            security_id=active_trade["option_id"],
+            exchange_segment=trade_exchange_segment,
+            transaction_type=dhan.SELL,
+            quantity=trade_lot_size,
+            order_type=dhan.LIMIT,
+            product_type=dhan.INTRADAY,
+            price=exit_limit_price
+        )
     
     exit_success, exit_details = scanner.verify_order(exit_response, f"EXIT-{exit_reason}")
     

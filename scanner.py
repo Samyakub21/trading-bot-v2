@@ -724,17 +724,24 @@ def verify_order(
     Verify order was placed successfully and get order details.
     
     Uses exponential backoff for polling order status instead of fixed delays.
-    
-    Args:
-        order_response: Response from dhan.place_order()
-        action: Description of the order action (for logging)
-        config: Optional custom configuration for timeouts/retries
-    
-    Returns:
-        Tuple of (success: bool, details: dict or None)
     """
     if config is None:
         config = ORDER_VERIFICATION_CONFIG
+        
+    # Check for Paper Trading mock response
+    try:
+        if order_response and order_response.get("status") == "success":
+            order_data = order_response.get("data", {})
+            order_id = order_data.get("orderId", "")
+            if str(order_id).startswith("PAPER_"):
+                logging.info(f"📝 [PAPER TRADING] {action} Order verified: {order_id}")
+                return True, {
+                    "order_id": order_id, 
+                    "avg_price": order_data.get("price", 0), 
+                    "status": "TRADED"
+                }
+    except Exception:
+        pass
     
     try:
         if order_response is None:
@@ -853,15 +860,28 @@ def execute_trade_entry(
     # Place order with LIMIT buffer
     limit_price = round(price * (1 + LIMIT_ORDER_BUFFER), 2)
     
-    order_response = dhan.place_order(
-        security_id=opt_id,
-        exchange_segment=inst["exchange_segment_str"],
-        transaction_type=dhan.BUY, 
-        quantity=inst["lot_size"],
-        order_type=dhan.LIMIT,
-        product_type=dhan.INTRADAY,
-        price=limit_price
-    )
+    # Check for Paper Trading
+    is_paper_trading = config.get_trading_param("PAPER_TRADING", False)
+    
+    if is_paper_trading:
+        logging.info(f"📝 PAPER TRADING: Placing ENTRY order for {opt_id} @ ₹{limit_price}")
+        order_response = {
+            "status": "success", 
+            "data": {
+                "orderId": f"PAPER_{int(time.time()*1000)}",
+                "price": limit_price
+            }
+        }
+    else:
+        order_response = dhan.place_order(
+            security_id=opt_id,
+            exchange_segment=inst["exchange_segment_str"],
+            transaction_type=dhan.BUY, 
+            quantity=inst["lot_size"],
+            order_type=dhan.LIMIT,
+            product_type=dhan.INTRADAY,
+            price=limit_price
+        )
     
     order_success, order_details = verify_order(order_response, "ENTRY")
     
