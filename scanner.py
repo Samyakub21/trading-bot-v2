@@ -191,6 +191,9 @@ def get_instrument_data(
             # Drop duplicates (timestamps) to ensure clean data
             df = df[~df.index.duplicated(keep='last')]
             
+            # Fix Memory Leak: Keep only last 30 days of data
+            df = df[df.index >= (datetime.now() - timedelta(days=30))]
+            
         # Update Cache
         _DATA_CACHE[cache_key] = df
         

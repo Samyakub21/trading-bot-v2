@@ -56,6 +56,11 @@ def download_scrip_master(output_path: str = SCRIP_MASTER_CSV) -> bool:
             f.write(response.content)
         
         logging.info(f"✅ Scrip master downloaded to {output_path}")
+        
+        # Fix Stale Cache: Force reload on next call
+        global _SCRIP_MASTER_CACHE
+        _SCRIP_MASTER_CACHE = None
+        
         return True
         
     except Exception as e:
