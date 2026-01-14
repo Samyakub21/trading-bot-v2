@@ -176,8 +176,9 @@ def find_current_month_future(
             else:
                 continue
             
-            # Only consider contracts expiring in the future
-            if expiry_date >= today:
+            # Only consider contracts expiring in the future (with rollover buffer)
+            days_to_expiry = (expiry_date - today).days
+            if days_to_expiry >= 2:  # Roll over if expiry is within 2 days
                 contract['_expiry_date'] = expiry_date
                 matching.append(contract)
                 

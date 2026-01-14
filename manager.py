@@ -531,8 +531,15 @@ def place_exit_order(active_trade: Dict[str, Any], exit_reason: str = "MANUAL") 
             # Fallback to socket_handler.get_option_ltp() value
             
     trade_lot_size = active_trade.get("lot_size", 10)
-    # V2 API: Default to MCX_COMM for commodity options
-    trade_exchange_segment = active_trade.get("exchange_segment_str", "MCX_COMM")
+    # V2 API: Smart fallback for exchange segment
+    trade_exchange_segment = active_trade.get("exchange_segment_str")
+    if not trade_exchange_segment:
+        # Fallback: Try to look up from INSTRUMENTS config
+        inst_key = active_trade.get("instrument")
+        if inst_key and inst_key in INSTRUMENTS:
+            trade_exchange_segment = INSTRUMENTS[inst_key].get("exchange_segment_str", "MCX_COMM")
+        else:
+            trade_exchange_segment = "MCX_COMM"
     
     opt_ltp = option_ltp if option_ltp > 0 else active_trade.get("option_entry", 0)
     

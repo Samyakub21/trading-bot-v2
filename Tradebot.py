@@ -374,7 +374,14 @@ class TradingBot:
         socket_thread = self._start_socket_thread()
         self.threads.append(socket_thread)
         
-        time.sleep(5)
+        logging.info("Waiting for market data feed...")
+        for _ in range(15):  # Wait up to 15 seconds
+            if socket_handler.get_latest_ltp() > 0:
+                logging.info("✅ Market data received")
+                break
+            time.sleep(1)
+        else:
+            logging.warning("⚠️ Starting scanner without live data (LTP is 0)")
         
         # Start scanner thread
         scanner_thread = self._start_scanner_thread()

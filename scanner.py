@@ -1059,6 +1059,18 @@ def run_scanner(active_trade: Dict[str, Any], active_instrument: str) -> None:
                     with open(MANUAL_TRADE_SIGNAL_FILE, 'r') as f:
                         manual_signal = json.load(f)
                     
+                    # Prevent Stale Signals
+                    signal_timestamp_str = manual_signal.get("timestamp")
+                    if signal_timestamp_str:
+                        try:
+                            sig_time = datetime.fromisoformat(signal_timestamp_str)
+                            if (datetime.now() - sig_time).total_seconds() > 300: # 5 minutes
+                                logging.warning(f"⚠️ Discarding STALE manual signal from {signal_timestamp_str}")
+                                MANUAL_TRADE_SIGNAL_FILE.unlink()
+                                continue
+                        except ValueError:
+                            pass # Proceed if timestamp format is invalid (fallback)
+
                     inst_key = manual_signal.get("instrument")
                     signal = manual_signal.get("signal")
                     
