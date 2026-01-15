@@ -17,24 +17,29 @@ jobs:
     - name: Set up Python 3.12
       uses: actions/setup-python@v4
       with:
-        python-version: "3.12"  # Updated to 3.12
+        python-version: "3.12"
         cache: 'pip'
 
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip setuptools wheel
         
-        # --- CRITICAL FIXES FOR PYTHON 3.12 ---
-        # 1. Use the ZIP version of pandas-ta (avoids git auth errors).
-        # 2. Pin numpy < 2.0.0 because pandas-ta breaks with numpy 2.0+.
-        #    (We use 'sed' to inject this constraint into requirements.txt dynamically)
+        # --- BULLETPROOF FIX ---
+        # 1. Remove ANY line containing 'pandas-ta' from requirements.txt
+        #    (This prevents pip from trying to git clone it and failing)
+        sed -i '/pandas-ta/d' requirements.txt
         
-        sed -i 's|pandas-ta>=0.3.14b|pandas-ta @ https://github.com/twopirllc/pandas-ta/archive/development.zip\nnumpy<2.0.0|g' requirements.txt
+        # 2. Manually install pandas-ta from the ZIP archive
+        #    (This acts like a standard download, bypassing Git auth completely)
+        pip install https://github.com/twopirllc/pandas-ta/archive/development.zip
         
-        # Install project dependencies
+        # 3. Pin Numpy to < 2.0.0 (Required for pandas-ta compatibility)
+        pip install "numpy<2.0.0"
+        
+        # 4. Install the rest of the dependencies from the cleaned file
         pip install -r requirements.txt
         
-        # Install testing and linting tools
+        # 5. Install testing tools
         pip install flake8 black mypy pytest pytest-asyncio pytest-cov
 
     - name: Lint with Black (Formatting)
