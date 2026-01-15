@@ -24,28 +24,29 @@ jobs:
       run: |
         python -m pip install --upgrade pip setuptools wheel
         
-        # Install project dependencies from your updated requirements.txt
+        # Install project dependencies from requirements.txt
         pip install -r requirements.txt
         
-        # Install testing and linting tools (not always in requirements.txt)
+        # Install testing and linting tools
         pip install flake8 black mypy pytest pytest-asyncio pytest-cov
 
     - name: Lint with Black (Formatting)
       run: |
-        # Check if code is formatted correctly. Fails if it's not.
-        black --check .
+        # Check formatting, but EXCLUDE the backup folder
+        black --check . --extend-exclude "Extras/backup"
 
     - name: Lint with Flake8 (Syntax & Style)
       run: |
-        # Stop the build if there are Python syntax errors or undefined names
-        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
-        # Exit-zero treats all errors as warnings.
-        flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+        # Check for syntax errors, excluding the backup folder
+        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics --exclude=Extras/backup
+        
+        # Check for style violations (warnings only), excluding the backup folder
+        flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics --exclude=Extras/backup
 
     - name: Type Check with Mypy
       run: |
-        # Targeted type checking, ignoring missing imports for libraries without stubs
-        mypy . --ignore-missing-imports || true
+        # Targeted type checking, ignoring missing imports and the backup folder
+        mypy . --ignore-missing-imports --exclude Extras/backup || true
 
     - name: Run Tests
       run: |
