@@ -5,7 +5,8 @@
 # Core Dependencies - Dhan V2 API requires dhanhq >= 2.0.0
 dhanhq>=2.0.0
 pandas>=2.0.0
-pandas-ta>=0.3.14b
+#pandas-ta>=0.3.14b
+git+https://github.com/twopirllc/pandas-ta.git@development#egg=pandas-ta
 numpy>=1.24.0
 
 # Async Support
@@ -46,3 +47,4 @@ python-dateutil>=2.8.2
 # Type checking (optional)
 # mypy>=1.7.0
 # types-requests>=2.31.0
+git+https://github.com/twopirllc/pandas-ta.git@development#egg=pandas-ta
