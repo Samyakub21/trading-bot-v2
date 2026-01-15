@@ -68,8 +68,13 @@ logging.basicConfig(
 
 # Configure StreamHandler to use UTF-8 encoding for Windows console
 for handler in logging.root.handlers:
-    if isinstance(handler, logging.StreamHandler) and handler.stream.name in ['<stdout>', '<stderr>']:
-        handler.setStream(open(handler.stream.fileno(), mode='w', encoding='utf-8', buffering=1, closefd=False))
+    if isinstance(handler, logging.StreamHandler) and hasattr(handler.stream, 'fileno'):
+        stream_name = getattr(handler.stream, 'name', None)
+        if stream_name in ['<stdout>', '<stderr>']:
+            try:
+                handler.setStream(open(handler.stream.fileno(), mode='w', encoding='utf-8', buffering=1, closefd=False))
+            except (OSError, AttributeError):
+                pass
 
 
 # =============================================================================
