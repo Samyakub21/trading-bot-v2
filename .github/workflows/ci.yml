@@ -24,22 +24,17 @@ jobs:
       run: |
         python -m pip install --upgrade pip setuptools wheel
         
-        # --- BULLETPROOF FIX ---
-        # 1. Remove ANY line containing 'pandas-ta' from requirements.txt
-        #    (This prevents pip from trying to git clone it and failing)
+        # --- FIX: Switch to pandas-ta-openbb for Python 3.12/Numpy 2 Support ---
+        # 1. Remove the old pandas-ta requirement which is causing conflicts/404s
         sed -i '/pandas-ta/d' requirements.txt
         
-        # 2. Manually install pandas-ta from the ZIP archive
-        #    (This acts like a standard download, bypassing Git auth completely)
-        pip install https://github.com/twopirllc/pandas-ta/archive/development.zip
+        # 2. Install pandas-ta-openbb from PyPI (Drop-in replacement compatible with Numpy 2)
+        pip install pandas-ta-openbb
         
-        # 3. Pin Numpy to < 2.0.0 (Required for pandas-ta compatibility)
-        pip install "numpy<2.0.0"
-        
-        # 4. Install the rest of the dependencies from the cleaned file
+        # 3. Install the rest of the project dependencies
         pip install -r requirements.txt
         
-        # 5. Install testing tools
+        # 4. Install testing tools
         pip install flake8 black mypy pytest pytest-asyncio pytest-cov
 
     - name: Lint with Black (Formatting)
