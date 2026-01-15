@@ -176,3 +176,22 @@ def reset_option_ltp() -> None: global OPTION_LTP; OPTION_LTP = 0
 def shutdown_socket() -> None: SHUTDOWN_EVENT.set()
 def is_shutdown() -> bool: return SHUTDOWN_EVENT.is_set()
 def should_process_tick(now_ms: int) -> bool: return (now_ms - LAST_TICK_TIME.timestamp() * 1000) >= config.MIN_TICK_INTERVAL_MS
+
+
+def subscribe_option(market_feed, security_id: str, exchange_segment: int) -> None:
+    """Subscribe to a specific option contract"""
+    if market_feed:
+        try:
+            market_feed.subscribe_symbols([(exchange_segment, str(security_id))])
+            logging.info(f"✅ Subscribed to option: {security_id}")
+        except Exception as e:
+            logging.error(f"Failed to subscribe to option {security_id}: {e}")
+
+def unsubscribe_option(market_feed, security_id: str, exchange_segment: int) -> None:
+    """Unsubscribe from a specific option contract"""
+    if market_feed:
+        try:
+            market_feed.unsubscribe_symbols([(exchange_segment, str(security_id))])
+            logging.info(f"Unsubscribed from option: {security_id}")
+        except Exception as e:
+            logging.error(f"Failed to unsubscribe from option {security_id}: {e}")

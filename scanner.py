@@ -29,7 +29,7 @@ from contract_updater import load_scrip_master
 import socket_handler
 from state_stores import get_signal_tracker
 
-_DATA_CACHE = {}
+_DATA_CACHE: Dict[str, pd.DataFrame] = {}
 
 # =============================================================================
 # STRATEGY PATTERN SUPPORT (Optional - for modular strategies)
@@ -62,14 +62,14 @@ except ImportError:
 CLIENT_ID = config.CLIENT_ID
 ACCESS_TOKEN = config.ACCESS_TOKEN
 # Initialize Dhan client (dhanhq v2.0)
-dhan = dhanhq(CLIENT_ID, ACCESS_TOKEN)
+dhan: dhanhq = dhanhq(CLIENT_ID, ACCESS_TOKEN)
 
 # Threading lock for safe active_trade access
-trade_lock = threading.Lock()
-instrument_lock = threading.Lock()
+trade_lock: threading.Lock = threading.Lock()
+instrument_lock: threading.Lock = threading.Lock()
 
 # Signal tracker singleton (replaces global LAST_SIGNAL, LAST_SIGNAL_TIME, LAST_LOSS_TIME)
-_signal_tracker = get_signal_tracker()
+_signal_tracker: Any = get_signal_tracker()
 
 
 def update_last_signal(signal: str, instrument: Optional[str] = None) -> None:
@@ -522,64 +522,59 @@ def get_atm_option(
     target_key = "ce" if target == "CE" else "pe"
     
     try:
-        # For MCX commodities, the option_chain API doesn't work well
-        # Skip API call and go directly to scrip master lookup
-        is_mcx = exchange_segment_str.upper() in ['MCX', 'MCX_COMM']
+        # V2 API: option_chain takes underlying_security_id, underlying_segment, expiry_date
+        chain = dhan.option_chain(
+            under_security_id=future_id,
+            under_exchange_segment=exchange_segment_str,
+            expiry=expiry_date
+        )
         
-        if not is_mcx:
-            # V2 API: option_chain takes underlying_security_id, underlying_segment, expiry_date
-            chain = dhan.option_chain(
-                under_security_id=future_id,
-                under_exchange_segment=exchange_segment_str,
-                expiry=expiry_date
-            )
+        if chain.get('status') != 'failure':
+            chain_data = chain.get('data', {})
             
-            if chain.get('status') != 'failure':
-                chain_data = chain.get('data', {})
-                
-                # V2 API returns option chain in 'oc' dictionary keyed by strike price
-                option_chain_dict = chain_data.get('oc', {})
-                
-                # Try to find the ATM strike
-                strike_key = f"{float(atm_strike)}"
-                
-                # Also try integer format
-                if strike_key not in option_chain_dict:
-                    strike_key = str(atm_strike)
-                
-                # Search for strike with float representation
-                if strike_key not in option_chain_dict:
-                    for key in option_chain_dict.keys():
-                        try:
-                            if abs(float(key) - atm_strike) < 0.01:
-                                strike_key = key
-                                break
-                        except ValueError:
-                            continue
-                        
-                if strike_key in option_chain_dict:
-                    strike_data = option_chain_dict[strike_key]
-                    option_data = strike_data.get(target_key, {})
+            # V2 API returns option chain in 'oc' dictionary keyed by strike price
+            option_chain_dict = chain_data.get('oc', {})
+            
+            # Try to find the ATM strike
+            strike_key = f"{float(atm_strike)}"
+            
+            # Also try integer format
+            if strike_key not in option_chain_dict:
+                strike_key = str(atm_strike)
+            
+            # Search for strike with float representation
+            if strike_key not in option_chain_dict:
+                for key in option_chain_dict.keys():
+                    try:
+                        if abs(float(key) - atm_strike) < 0.01:
+                            strike_key = key
+                            break
+                    except ValueError:
+                        continue
                     
-                    # V2 API includes security_id in option data
-                    security_id = option_data.get('security_id') or option_data.get('securityId')
-                    
-                    if security_id:
-                        logging.debug(f"Found ATM option: Strike {atm_strike} {target} -> ID: {security_id}")
+            if strike_key in option_chain_dict:
+                strike_data = option_chain_dict[strike_key]
+                option_data = strike_data.get(target_key, {})
+                
+                # V2 API includes security_id in option data
+                security_id = option_data.get('security_id') or option_data.get('securityId')
+                
+                if security_id:
+                    logging.debug(f"Found ATM option: Strike {atm_strike} {target} -> ID: {security_id}")
+                    return str(security_id)
+            
+            # Fallback: Try legacy format if V2 format not found
+            if isinstance(chain_data, list):
+                for item in chain_data:
+                    item_strike = item.get('strike_price', item.get('strikePrice', 0))
+                    item_type = item.get('dr_option_type', item.get('drvOptionType', ''))
+                    if item_strike == atm_strike and item_type == target:
+                        security_id = item.get('security_id', item.get('securityId'))
+                        logging.debug(f"Found ATM option (legacy): Strike {atm_strike} {target} -> ID: {security_id}")
                         return str(security_id)
-                
-                # Fallback: Try legacy format if V2 format not found
-                if isinstance(chain_data, list):
-                    for item in chain_data:
-                        item_strike = item.get('strike_price', item.get('strikePrice', 0))
-                        item_type = item.get('dr_option_type', item.get('drvOptionType', ''))
-                        if item_strike == atm_strike and item_type == target:
-                            security_id = item.get('security_id', item.get('securityId'))
-                            logging.debug(f"Found ATM option (legacy): Strike {atm_strike} {target} -> ID: {security_id}")
-                            return str(security_id)
-            else:
-                error_msg = chain.get('remarks', chain.get('errorMessage', 'Unknown error'))
-                logging.debug(f"Option chain API failed: {error_msg}, trying scrip master lookup")
+        else:
+            error_msg = chain.get('remarks', chain.get('errorMessage', 'Unknown error'))
+            logging.debug(f"Option chain API failed: {error_msg}, trying scrip master lookup")
         
         # Fallback: Look up from scrip master (especially for MCX commodities)
         if underlying:
@@ -667,7 +662,7 @@ def check_margin_available(
                     required_funds = option_ltp * lot_size * 1.05  # 5% buffer
                     
                     if available_balance >= required_funds:
-                        return True, f"Funds OK: ₹{available_balance:.2f} >= Premium ₹{required_funds:.2f} (LTP: {option_ltp:.2f} × {lot_size})"
+                        return True, f"Margin OK: ₹{available_balance:.2f} >= Premium ₹{required_funds:.2f} (LTP: {option_ltp:.2f} × {lot_size})"
                     else:
                         return False, f"Insufficient funds: Available ₹{available_balance:.2f} < Premium ₹{required_funds:.2f}"
         except Exception as e:
@@ -690,7 +685,7 @@ def check_margin_available(
         fallback_premium = estimated_premium.get(lot_size, 20000)
         
         if available_balance >= fallback_premium:
-            return True, f"Balance OK: ₹{available_balance:.2f} (est. premium ~₹{fallback_premium})"
+            return True, f"Margin OK: ₹{available_balance:.2f} (est. premium ~₹{fallback_premium})"
         else:
             return False, f"Insufficient funds: Available ₹{available_balance:.2f} < Est. Premium ₹{fallback_premium}"
                 

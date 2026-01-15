@@ -174,7 +174,7 @@ class TestGetATMOption:
         }
         
         # BUY signal should get CE option
-        result = get_atm_option("BUY", 6010, "MCX_COMM", "464926", "2026-01-16", "OPTFUT", 50)
+        result = get_atm_option("BUY", 6010, "NSE_FNO", "464926", "2026-01-16", "OPTFUT", 50)
         assert result == '12345'
     
     @patch('scanner.dhan')
@@ -193,7 +193,7 @@ class TestGetATMOption:
             }
         }
         
-        result = get_atm_option("SELL", 6010, "MCX_COMM", "464926", "2026-01-16", "OPTFUT", 50)
+        result = get_atm_option("SELL", 6010, "NSE_FNO", "464926", "2026-01-16", "OPTFUT", 50)
         assert result == '12346'
     
     @patch('scanner.dhan')
@@ -224,7 +224,7 @@ class TestGetATMOption:
         }
         
         # Price 6030 with step 50 should round to 6050
-        result = get_atm_option("BUY", 6030, "MCX_COMM", "464926", "2026-01-16", "OPTFUT", 50)
+        result = get_atm_option("BUY", 6030, "NSE_FNO", "464926", "2026-01-16", "OPTFUT", 50)
         assert result == '12347'
 
 

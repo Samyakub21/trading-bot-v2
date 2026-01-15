@@ -24,7 +24,7 @@ import scanner
 CLIENT_ID = config.CLIENT_ID
 ACCESS_TOKEN = config.ACCESS_TOKEN
 # Initialize Dhan client (dhanhq v2.0)
-dhan = dhanhq(CLIENT_ID, ACCESS_TOKEN)
+dhan: dhanhq = dhanhq(CLIENT_ID, ACCESS_TOKEN)
 
 # =============================================================================
 # POLL FALLBACK CONFIGURATION

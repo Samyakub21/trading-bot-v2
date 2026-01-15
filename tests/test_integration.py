@@ -443,8 +443,8 @@ class TestContractUpdateIntegration:
                 'SEM_SMST_SECURITY_ID': 'NEW_464926',
                 'SEM_EXM_EXCH_ID': 'MCX',
                 'SEM_INSTRUMENT_NAME': 'FUTCOM',
-                'SEM_TRADING_SYMBOL': 'CRUDEOIL26FEB',
-                'SEM_CUSTOM_SYMBOL': 'CRUDEOIL',
+                'SEM_TRADING_SYMBOL': 'CRUDEOIL-26FEB-FUT',
+                'SEM_CUSTOM_SYMBOL': 'CRUDEOIL FEB FUT',
                 'SEM_EXPIRY_DATE': new_expiry,
                 'SEM_LOT_UNITS': '10',
             }

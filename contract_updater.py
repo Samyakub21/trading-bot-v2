@@ -151,14 +151,12 @@ def find_current_month_future(
         trading_symbol = contract.get('SEM_TRADING_SYMBOL', '').upper()
         custom_symbol = contract.get('SEM_CUSTOM_SYMBOL', '').upper()
         
-        # More precise matching: symbol should start with underlying followed by separator
-        # e.g., "NIFTY-Jan2026-FUT" for underlying "NIFTY"
-        # Avoid matching "BANKNIFTY" when looking for "NIFTY"
+        # Relaxed matching: Check if symbol starts with underlying
+        # and ensure it's not a different derivative (like BANKNIFTY vs NIFTY)
         underlying_upper = underlying.upper()
         symbol_matches = (
-            trading_symbol.startswith(underlying_upper + '-') or  # CRUDEOIL-16Jan2026-FUT
-            trading_symbol.startswith(underlying_upper + 'M-') or  # CRUDEOILM-16Jan2026-FUT (mini)
-            custom_symbol.startswith(underlying_upper + ' ')  # CRUDEOIL JAN FUT
+            trading_symbol.startswith(underlying_upper) and 
+            (len(trading_symbol) == len(underlying_upper) or not trading_symbol[len(underlying_upper)].isalpha())
         )
         if not symbol_matches:
             continue

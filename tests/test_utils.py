@@ -379,6 +379,7 @@ class TestStateManagement:
     def test_load_default_state(self, tmp_path, monkeypatch):
         """Should return default state when no file exists"""
         monkeypatch.setattr('utils.STATE_FILE', str(tmp_path / "nonexistent.json"))
+        monkeypatch.setattr('utils.USE_DATABASE', False)
         
         state = load_state()
         assert state['status'] == False
