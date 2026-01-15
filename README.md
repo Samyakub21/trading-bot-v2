@@ -268,3 +268,5 @@ Or from terminal:
 ```bash
 python -c "from eod_report import generate_and_send_eod_report; generate_and_send_eod_report()"
 ```
+
+[![CI](https://github.com/Samyakub21/trading-bot-v2/workflows/CI/badge.svg)](https://github.com/Samyakub21/trading-bot-v2/actions)
