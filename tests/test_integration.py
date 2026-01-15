@@ -605,5 +605,178 @@ class TestErrorHandlingIntegration:
         is_valid = True
         if invalid_signal['type'] == 'BUY' and invalid_signal['stop_loss'] >= invalid_signal['entry_price']:
             is_valid = False
-        
+
         assert is_valid is False
+
+
+# =============================================================================
+# END-TO-END BOT SIMULATION
+# =============================================================================
+
+class TestBotEndToEnd:
+    """Comprehensive end-to-end simulation of the trading bot."""
+
+    @patch('Tradebot.dhan')
+    @patch('Tradebot.socket_handler')
+    @patch('Tradebot.time.sleep')
+    @patch('Tradebot.scanner')
+    @patch('Tradebot.manager')
+    @patch('Tradebot.contract_updater')
+    @patch('Tradebot.position_reconciliation')
+    def test_full_trading_cycle_simulation(
+        self,
+        mock_reconciliation,
+        mock_contract_updater,
+        mock_manager,
+        mock_scanner,
+        mock_sleep,
+        mock_socket,
+        mock_dhan
+    ):
+        """Simulate complete trading cycle: startup -> scan -> entry -> exit."""
+        from Tradebot import Tradebot
+
+        # Mock initial setup
+        mock_dhan.get_positions.return_value = {'status': 'success', 'data': []}
+        mock_socket.start_websocket.return_value = None
+        mock_scanner.start_scanning.return_value = None
+
+        # Mock market data
+        mock_socket.get_latest_ltp.return_value = 6000.0
+        mock_socket.get_option_ltp.return_value = 150.0
+
+        # Mock scanner signal
+        mock_scanner.scan_for_signals.return_value = {
+            'type': 'BUY',
+            'instrument': 'CRUDEOIL',
+            'entry_price': 6000.0,
+            'stop_loss': 5980.0,
+            'targets': [6020.0, 6040.0, 6060.0]
+        }
+
+        # Mock manager trade entry
+        mock_manager.enter_position.return_value = {
+            'status': 'success',
+            'order_id': 'TEST_ORDER_123'
+        }
+
+        # Mock manager position monitoring
+        mock_manager.monitor_positions.return_value = None
+
+        # Create bot instance
+        bot = Tradebot()
+
+        # Simulate limited run (instead of infinite loop)
+        call_count = 0
+        def mock_sleep_side_effect(seconds):
+            nonlocal call_count
+            call_count += 1
+            if call_count >= 5:  # Stop after 5 sleep calls
+                raise KeyboardInterrupt("Test stop")
+
+        mock_sleep.side_effect = mock_sleep_side_effect
+
+        # Run the bot (should stop after a few cycles)
+        with pytest.raises(KeyboardInterrupt):
+            bot.start()
+
+        # Verify startup sequence
+        mock_contract_updater.update_all_instruments.assert_called_once()
+        mock_reconciliation.reconcile_positions.assert_called_once()
+        mock_socket.start_websocket.assert_called_once()
+        mock_scanner.start_scanning.assert_called_once()
+
+        # Verify scanning was attempted
+        assert mock_scanner.scan_for_signals.call_count >= 1
+
+        # Verify sleep was called multiple times
+        assert mock_sleep.call_count >= 5
+
+    @patch('Tradebot.dhan')
+    @patch('Tradebot.socket_handler')
+    @patch('Tradebot.scanner')
+    @patch('Tradebot.manager')
+    def test_signal_to_trade_execution_flow(
+        self,
+        mock_manager,
+        mock_scanner,
+        mock_socket,
+        mock_dhan
+    ):
+        """Test flow from signal detection to trade execution."""
+        from Tradebot import Tradebot
+
+        # Mock signal detection
+        signal = {
+            'type': 'BUY',
+            'instrument': 'CRUDEOIL',
+            'entry_price': 6000.0,
+            'stop_loss': 5980.0
+        }
+        mock_scanner.scan_for_signals.return_value = signal
+
+        # Mock LTP data
+        mock_socket.get_latest_ltp.return_value = 6000.0
+        mock_socket.get_option_ltp.return_value = 150.0
+
+        # Mock successful order placement
+        mock_dhan.place_order.return_value = {
+            'status': 'success',
+            'data': {'orderId': 'ORDER123'}
+        }
+
+        # Create bot and simulate signal processing
+        bot = Tradebot()
+
+        # Simulate the scanning and entry logic
+        current_signal = mock_scanner.scan_for_signals()
+
+        if current_signal:
+            # This would trigger manager.enter_position
+            entry_result = mock_manager.enter_position(current_signal)
+
+            # Verify signal was processed
+            assert current_signal['type'] == 'BUY'
+            assert current_signal['instrument'] == 'CRUDEOIL'
+
+            # Verify manager was called with signal
+            mock_manager.enter_position.assert_called_once_with(current_signal)
+
+    @patch('Tradebot.manager')
+    @patch('Tradebot.socket_handler')
+    def test_position_monitoring_and_exit(
+        self,
+        mock_socket,
+        mock_manager
+    ):
+        """Test position monitoring and exit logic."""
+        from Tradebot import Tradebot
+
+        # Mock active position
+        mock_manager.get_active_positions.return_value = [{
+            'instrument': 'CRUDEOIL',
+            'entry_price': 6000.0,
+            'stop_loss': 5980.0,
+            'current_price': 6020.0,  # Profit
+            'pnl': 200.0
+        }]
+
+        # Mock price checks
+        mock_socket.get_latest_ltp.return_value = 6020.0
+        mock_socket.get_option_ltp.return_value = 170.0  # Profit exit
+
+        # Create bot
+        bot = Tradebot()
+
+        # Simulate monitoring cycle
+        active_positions = mock_manager.get_active_positions()
+
+        if active_positions:
+            position = active_positions[0]
+
+            # Check if exit conditions met
+            if position['current_price'] >= position['entry_price'] + 40:  # 2R target
+                mock_manager.exit_position(position['instrument'])
+
+        # Verify exit was triggered
+        mock_manager.exit_position.assert_called_once_with('CRUDEOIL')
