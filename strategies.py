@@ -25,18 +25,19 @@ import logging
 # ABSTRACT BASE STRATEGY
 # =============================================================================
 
+
 class Strategy(ABC):
     """
     Abstract base class for trading strategies.
-    
+
     All strategies must implement the analyze() method which takes OHLCV data
     and returns a signal dictionary or None.
     """
-    
+
     def __init__(self, instrument: str, params: Optional[Dict[str, Any]] = None):
         """
         Initialize strategy with instrument and optional parameters.
-        
+
         Args:
             instrument: The instrument key (e.g., "CRUDEOIL", "NIFTY")
             params: Optional dictionary of strategy parameters
@@ -44,39 +45,37 @@ class Strategy(ABC):
         self.instrument = instrument
         self.params = params or {}
         self._set_default_params()
-    
+
     @abstractmethod
     def _set_default_params(self) -> None:
         """Set default parameters for the strategy. Override in subclasses."""
         pass
-    
+
     @abstractmethod
     def analyze(
-        self,
-        df_15: pd.DataFrame,
-        df_60: pd.DataFrame
+        self, df_15: pd.DataFrame, df_60: pd.DataFrame
     ) -> Optional[Dict[str, Any]]:
         """
         Analyze price data and generate trading signal.
-        
+
         Args:
             df_15: 15-minute OHLCV DataFrame
             df_60: 60-minute OHLCV DataFrame
-            
+
         Returns:
             Signal dictionary with keys: signal, price, rsi, etc.
             Returns None if no signal generated.
         """
         pass
-    
+
     def get_param(self, key: str, default: Any = None) -> Any:
         """Get a parameter value with fallback to default."""
         return self.params.get(key, default)
-    
+
     def update_params(self, new_params: Dict[str, Any]) -> None:
         """Update strategy parameters dynamically."""
         self.params.update(new_params)
-    
+
     @property
     def name(self) -> str:
         """Return strategy name for logging."""
@@ -87,17 +86,18 @@ class Strategy(ABC):
 # TREND FOLLOWING STRATEGY (Default - RSI + EMA + VWAP)
 # =============================================================================
 
+
 class TrendFollowingStrategy(Strategy):
     """
     Trend Following Strategy using RSI, EMA, and VWAP.
-    
+
     Best suited for: Commodities (CRUDEOIL, GOLD, SILVER, NATURALGAS)
-    
+
     Entry Rules:
     - BUY: Price > EMA50 (60min), Price > VWAP (15min), RSI > bullish_threshold
     - SELL: Price < EMA50 (60min), Price < VWAP (15min), RSI < bearish_threshold
     """
-    
+
     def _set_default_params(self) -> None:
         """Set default parameters for trend following."""
         defaults = {
@@ -111,11 +111,9 @@ class TrendFollowingStrategy(Strategy):
         for key, value in defaults.items():
             if key not in self.params:
                 self.params[key] = value
-    
+
     def analyze(
-        self,
-        df_15: pd.DataFrame,
-        df_60: pd.DataFrame
+        self, df_15: pd.DataFrame, df_60: pd.DataFrame
     ) -> Optional[Dict[str, Any]]:
         """Analyze using trend following logic."""
         try:
@@ -126,44 +124,60 @@ class TrendFollowingStrategy(Strategy):
             ema_length = self.get_param("ema_length", 50)
             volume_mult = self.get_param("volume_multiplier", 1.2)
             vol_window = self.get_param("volume_window", 20)
-            
+
             # Calculate indicators
-            df_60['EMA'] = ta.ema(df_60['close'], length=ema_length)
+            df_60["EMA"] = ta.ema(df_60["close"], length=ema_length)
             df_15.ta.vwap(append=True)
-            df_15['RSI'] = ta.rsi(df_15['close'], length=rsi_length)
-            df_15['vol_avg'] = df_15['volume'].rolling(window=vol_window).mean()
-            
+            df_15["RSI"] = ta.rsi(df_15["close"], length=rsi_length)
+            df_15["vol_avg"] = df_15["volume"].rolling(window=vol_window).mean()
+
             trend = df_60.iloc[-2]
             trigger = df_15.iloc[-2]
-            
-            price = trigger['close']
-            vwap_val = trigger.get('VWAP_D', 0)
-            current_volume = trigger['volume']
-            avg_volume = trigger.get('vol_avg', current_volume)
-            rsi_val = trigger['RSI']
-            ema_val = trend['EMA']
-            trend_close = trend['close']
-            
+
+            price = trigger["close"]
+            vwap_val = trigger.get("VWAP_D", 0)
+            current_volume = trigger["volume"]
+            avg_volume = trigger.get("vol_avg", current_volume)
+            rsi_val = trigger["RSI"]
+            ema_val = trend["EMA"]
+            trend_close = trend["close"]
+
             # Volume confirmation
-            volume_confirmed = current_volume >= (avg_volume * volume_mult) if avg_volume > 0 else True
-            
+            volume_confirmed = (
+                current_volume >= (avg_volume * volume_mult) if avg_volume > 0 else True
+            )
+
             signal = None
             signal_strength = 0
-            
+
             # BULLISH Signal
-            if (trend_close > ema_val) and (trigger['close'] > vwap_val) and (rsi_val > rsi_bullish) and volume_confirmed:
+            if (
+                (trend_close > ema_val)
+                and (trigger["close"] > vwap_val)
+                and (rsi_val > rsi_bullish)
+                and volume_confirmed
+            ):
                 signal = "BUY"
-                signal_strength = (rsi_val - rsi_bullish) + ((trend_close - ema_val) / ema_val * 100)
+                signal_strength = (rsi_val - rsi_bullish) + (
+                    (trend_close - ema_val) / ema_val * 100
+                )
                 if avg_volume > 0:
                     signal_strength += (current_volume / avg_volume - 1) * 10
-            
+
             # BEARISH Signal
-            elif (trend_close < ema_val) and (trigger['close'] < vwap_val) and (rsi_val < rsi_bearish) and volume_confirmed:
+            elif (
+                (trend_close < ema_val)
+                and (trigger["close"] < vwap_val)
+                and (rsi_val < rsi_bearish)
+                and volume_confirmed
+            ):
                 signal = "SELL"
-                signal_strength = (rsi_bearish - rsi_val) + ((ema_val - trend_close) / ema_val * 100)
+                signal_strength = (rsi_bearish - rsi_val) + (
+                    (ema_val - trend_close) / ema_val * 100
+                )
                 if avg_volume > 0:
                     signal_strength += (current_volume / avg_volume - 1) * 10
-            
+
             if signal:
                 return {
                     "instrument": self.instrument,
@@ -178,9 +192,9 @@ class TrendFollowingStrategy(Strategy):
                     "strategy": self.name,
                     "df_15": df_15,
                 }
-            
+
             return None
-            
+
         except Exception as e:
             logging.error(f"[{self.name}] Analysis error for {self.instrument}: {e}")
             return None
@@ -190,17 +204,18 @@ class TrendFollowingStrategy(Strategy):
 # MEAN REVERSION STRATEGY
 # =============================================================================
 
+
 class MeanReversionStrategy(Strategy):
     """
     Mean Reversion Strategy using RSI oversold/overbought with Bollinger Bands.
-    
+
     Best suited for: Index options (NIFTY, BANKNIFTY) in ranging markets
-    
+
     Entry Rules:
     - BUY: RSI < oversold_level AND price near lower Bollinger Band
     - SELL: RSI > overbought_level AND price near upper Bollinger Band
     """
-    
+
     def _set_default_params(self) -> None:
         """Set default parameters for mean reversion."""
         defaults = {
@@ -215,11 +230,9 @@ class MeanReversionStrategy(Strategy):
         for key, value in defaults.items():
             if key not in self.params:
                 self.params[key] = value
-    
+
     def analyze(
-        self,
-        df_15: pd.DataFrame,
-        df_60: pd.DataFrame
+        self, df_15: pd.DataFrame, df_60: pd.DataFrame
     ) -> Optional[Dict[str, Any]]:
         """Analyze using mean reversion logic."""
         try:
@@ -231,49 +244,59 @@ class MeanReversionStrategy(Strategy):
             bb_std = self.get_param("bb_std", 2.0)
             band_threshold = self.get_param("band_threshold", 0.02)
             volume_mult = self.get_param("volume_multiplier", 1.0)
-            
+
             # Calculate indicators on 15min timeframe
-            df_15['RSI'] = ta.rsi(df_15['close'], length=rsi_length)
-            
+            df_15["RSI"] = ta.rsi(df_15["close"], length=rsi_length)
+
             # Bollinger Bands
-            bbands = ta.bbands(df_15['close'], length=bb_length, std=bb_std)
+            bbands = ta.bbands(df_15["close"], length=bb_length, std=bb_std)
             if bbands is not None:
-                df_15['BB_upper'] = bbands[f'BBU_{bb_length}_{bb_std}']
-                df_15['BB_lower'] = bbands[f'BBL_{bb_length}_{bb_std}']
-                df_15['BB_mid'] = bbands[f'BBM_{bb_length}_{bb_std}']
-            
-            df_15['vol_avg'] = df_15['volume'].rolling(window=20).mean()
-            
+                df_15["BB_upper"] = bbands[f"BBU_{bb_length}_{bb_std}"]
+                df_15["BB_lower"] = bbands[f"BBL_{bb_length}_{bb_std}"]
+                df_15["BB_mid"] = bbands[f"BBM_{bb_length}_{bb_std}"]
+
+            df_15["vol_avg"] = df_15["volume"].rolling(window=20).mean()
+
             trigger = df_15.iloc[-2]
-            
-            price = trigger['close']
-            rsi_val = trigger['RSI']
-            bb_upper = trigger.get('BB_upper', price * 1.02)
-            bb_lower = trigger.get('BB_lower', price * 0.98)
-            bb_mid = trigger.get('BB_mid', price)
-            current_volume = trigger['volume']
-            avg_volume = trigger.get('vol_avg', current_volume)
-            
+
+            price = trigger["close"]
+            rsi_val = trigger["RSI"]
+            bb_upper = trigger.get("BB_upper", price * 1.02)
+            bb_lower = trigger.get("BB_lower", price * 0.98)
+            bb_mid = trigger.get("BB_mid", price)
+            current_volume = trigger["volume"]
+            avg_volume = trigger.get("vol_avg", current_volume)
+
             # Volume check (less strict for mean reversion)
-            volume_ok = current_volume >= (avg_volume * volume_mult) if avg_volume > 0 else True
-            
+            volume_ok = (
+                current_volume >= (avg_volume * volume_mult) if avg_volume > 0 else True
+            )
+
             signal = None
             signal_strength = 0
-            
+
             # Calculate distance from bands as percentage
             lower_distance = (price - bb_lower) / bb_lower if bb_lower > 0 else 0
             upper_distance = (bb_upper - price) / bb_upper if bb_upper > 0 else 0
-            
+
             # BULLISH Signal (Oversold near lower band)
             if rsi_val < rsi_oversold and lower_distance < band_threshold and volume_ok:
                 signal = "BUY"
-                signal_strength = (rsi_oversold - rsi_val) + (band_threshold - lower_distance) * 100
-            
+                signal_strength = (rsi_oversold - rsi_val) + (
+                    band_threshold - lower_distance
+                ) * 100
+
             # BEARISH Signal (Overbought near upper band)
-            elif rsi_val > rsi_overbought and upper_distance < band_threshold and volume_ok:
+            elif (
+                rsi_val > rsi_overbought
+                and upper_distance < band_threshold
+                and volume_ok
+            ):
                 signal = "SELL"
-                signal_strength = (rsi_val - rsi_overbought) + (band_threshold - upper_distance) * 100
-            
+                signal_strength = (rsi_val - rsi_overbought) + (
+                    band_threshold - upper_distance
+                ) * 100
+
             if signal:
                 return {
                     "instrument": self.instrument,
@@ -289,9 +312,9 @@ class MeanReversionStrategy(Strategy):
                     "strategy": self.name,
                     "df_15": df_15,
                 }
-            
+
             return None
-            
+
         except Exception as e:
             logging.error(f"[{self.name}] Analysis error for {self.instrument}: {e}")
             return None
@@ -301,17 +324,18 @@ class MeanReversionStrategy(Strategy):
 # MOMENTUM BREAKOUT STRATEGY
 # =============================================================================
 
+
 class MomentumBreakoutStrategy(Strategy):
     """
     Momentum Breakout Strategy using price breakouts with volume confirmation.
-    
+
     Best suited for: Volatile commodities (NATURALGAS, SILVER)
-    
+
     Entry Rules:
     - BUY: Price breaks above recent high with strong volume and RSI momentum
     - SELL: Price breaks below recent low with strong volume and RSI momentum
     """
-    
+
     def _set_default_params(self) -> None:
         """Set default parameters for momentum breakout."""
         defaults = {
@@ -326,11 +350,9 @@ class MomentumBreakoutStrategy(Strategy):
         for key, value in defaults.items():
             if key not in self.params:
                 self.params[key] = value
-    
+
     def analyze(
-        self,
-        df_15: pd.DataFrame,
-        df_60: pd.DataFrame
+        self, df_15: pd.DataFrame, df_60: pd.DataFrame
     ) -> Optional[Dict[str, Any]]:
         """Analyze using momentum breakout logic."""
         try:
@@ -341,35 +363,39 @@ class MomentumBreakoutStrategy(Strategy):
             rsi_max_bear = self.get_param("rsi_max_bearish", 45)
             rsi_length = self.get_param("rsi_length", 14)
             volume_mult = self.get_param("volume_multiplier", 1.5)
-            
+
             # Calculate indicators
-            df_15['RSI'] = ta.rsi(df_15['close'], length=rsi_length)
-            df_15['vol_avg'] = df_15['volume'].rolling(window=20).mean()
-            
+            df_15["RSI"] = ta.rsi(df_15["close"], length=rsi_length)
+            df_15["vol_avg"] = df_15["volume"].rolling(window=20).mean()
+
             # Calculate recent high/low
-            df_15['recent_high'] = df_15['high'].rolling(window=lookback).max()
-            df_15['recent_low'] = df_15['low'].rolling(window=lookback).min()
-            
+            df_15["recent_high"] = df_15["high"].rolling(window=lookback).max()
+            df_15["recent_low"] = df_15["low"].rolling(window=lookback).min()
+
             trigger = df_15.iloc[-2]
             prev = df_15.iloc[-3]
-            
-            price = trigger['close']
-            rsi_val = trigger['RSI']
-            recent_high = prev['recent_high']  # Use previous candle's level
-            recent_low = prev['recent_low']
-            current_volume = trigger['volume']
-            avg_volume = trigger.get('vol_avg', current_volume)
-            
+
+            price = trigger["close"]
+            rsi_val = trigger["RSI"]
+            recent_high = prev["recent_high"]  # Use previous candle's level
+            recent_low = prev["recent_low"]
+            current_volume = trigger["volume"]
+            avg_volume = trigger.get("vol_avg", current_volume)
+
             # Volume confirmation (strong volume required)
-            volume_confirmed = current_volume >= (avg_volume * volume_mult) if avg_volume > 0 else False
-            
+            volume_confirmed = (
+                current_volume >= (avg_volume * volume_mult)
+                if avg_volume > 0
+                else False
+            )
+
             signal = None
             signal_strength = 0
-            
+
             # Calculate breakout levels
             upper_breakout = recent_high * (1 + breakout_pct)
             lower_breakout = recent_low * (1 - breakout_pct)
-            
+
             # BULLISH Breakout
             if price > upper_breakout and rsi_val > rsi_min_bull and volume_confirmed:
                 signal = "BUY"
@@ -377,7 +403,7 @@ class MomentumBreakoutStrategy(Strategy):
                 signal_strength = breakout_strength + (rsi_val - rsi_min_bull)
                 if avg_volume > 0:
                     signal_strength += (current_volume / avg_volume - 1) * 20
-            
+
             # BEARISH Breakout
             elif price < lower_breakout and rsi_val < rsi_max_bear and volume_confirmed:
                 signal = "SELL"
@@ -385,7 +411,7 @@ class MomentumBreakoutStrategy(Strategy):
                 signal_strength = breakout_strength + (rsi_max_bear - rsi_val)
                 if avg_volume > 0:
                     signal_strength += (current_volume / avg_volume - 1) * 20
-            
+
             if signal:
                 return {
                     "instrument": self.instrument,
@@ -400,9 +426,9 @@ class MomentumBreakoutStrategy(Strategy):
                     "strategy": self.name,
                     "df_15": df_15,
                 }
-            
+
             return None
-            
+
         except Exception as e:
             logging.error(f"[{self.name}] Analysis error for {self.instrument}: {e}")
             return None
@@ -433,36 +459,37 @@ STRATEGY_CLASSES = {
 def get_strategy(
     instrument: str,
     strategy_name: Optional[str] = None,
-    params: Optional[Dict[str, Any]] = None
+    params: Optional[Dict[str, Any]] = None,
 ) -> Strategy:
     """
     Factory function to get a strategy instance for an instrument.
-    
+
     Args:
         instrument: The instrument key (e.g., "CRUDEOIL")
         strategy_name: Optional strategy name override
         params: Optional parameters to pass to strategy
-        
+
     Returns:
         Strategy instance configured for the instrument
     """
     # Use provided strategy name or look up default
     if strategy_name is None:
         strategy_name = DEFAULT_STRATEGY_MAP.get(instrument, "TrendFollowing")
-    
+
     # Get strategy class
     strategy_class = STRATEGY_CLASSES.get(strategy_name, TrendFollowingStrategy)
-    
+
     # Merge instrument-specific params from INSTRUMENTS config if available
     from instruments import INSTRUMENTS
+
     inst_config = INSTRUMENTS.get(instrument, {})
-    
+
     # Get instrument-specific strategy params
     inst_params = inst_config.get("strategy_params", {})
-    
+
     # Merge with provided params (provided params take precedence)
     merged_params = {**inst_params, **(params or {})}
-    
+
     return strategy_class(instrument, merged_params)
 
 

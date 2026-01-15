@@ -25,8 +25,12 @@ import pandas as pd
 
 from config import config
 from utils import (
-    load_trade_history, load_daily_pnl, get_performance_stats,
-    TRADE_HISTORY_FILE, DAILY_PNL_FILE, send_alert
+    load_trade_history,
+    load_daily_pnl,
+    get_performance_stats,
+    TRADE_HISTORY_FILE,
+    DAILY_PNL_FILE,
+    send_alert,
 )
 from instruments import INSTRUMENTS
 
@@ -34,119 +38,171 @@ from instruments import INSTRUMENTS
 # CONFIGURATION
 # =============================================================================
 # Email configuration (from environment or config)
-SMTP_SERVER = os.getenv('SMTP_SERVER', 'smtp.gmail.com')
-SMTP_PORT = int(os.getenv('SMTP_PORT', '587'))
-EMAIL_ADDRESS = os.getenv('EMAIL_ADDRESS', '')
-EMAIL_PASSWORD = os.getenv('EMAIL_PASSWORD', '')  # App password for Gmail
-EMAIL_RECIPIENT = os.getenv('EMAIL_RECIPIENT', EMAIL_ADDRESS)
+SMTP_SERVER = os.getenv("SMTP_SERVER", "smtp.gmail.com")
+SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
+EMAIL_ADDRESS = os.getenv("EMAIL_ADDRESS", "")
+EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD", "")  # App password for Gmail
+EMAIL_RECIPIENT = os.getenv("EMAIL_RECIPIENT", EMAIL_ADDRESS)
 
 # Report settings
-REPORT_TIME = os.getenv('EOD_REPORT_TIME', '23:35')  # 11:35 PM
-REPORT_DIR = Path(__file__).parent / 'reports'
+REPORT_TIME = os.getenv("EOD_REPORT_TIME", "23:35")  # 11:35 PM
+REPORT_DIR = Path(__file__).parent / "reports"
 
 # Brokerage costs (per lot)
 BROKERAGE_COSTS = {
-    'CRUDEOIL': {'brokerage': 20, 'stt': 0, 'exchange_txn': 0.05, 'gst': 3.6, 'sebi': 0.1, 'stamp': 0.03},
-    'NATURALGAS': {'brokerage': 20, 'stt': 0, 'exchange_txn': 0.05, 'gst': 3.6, 'sebi': 0.1, 'stamp': 0.03},
-    'GOLD': {'brokerage': 20, 'stt': 0, 'exchange_txn': 0.05, 'gst': 3.6, 'sebi': 0.1, 'stamp': 0.03},
-    'SILVER': {'brokerage': 20, 'stt': 0, 'exchange_txn': 0.05, 'gst': 3.6, 'sebi': 0.1, 'stamp': 0.03},
-    'NIFTY': {'brokerage': 20, 'stt': 0.05, 'exchange_txn': 0.05, 'gst': 3.6, 'sebi': 0.1, 'stamp': 0.015},
-    'BANKNIFTY': {'brokerage': 20, 'stt': 0.05, 'exchange_txn': 0.05, 'gst': 3.6, 'sebi': 0.1, 'stamp': 0.015},
-    'DEFAULT': {'brokerage': 20, 'stt': 0, 'exchange_txn': 0.05, 'gst': 3.6, 'sebi': 0.1, 'stamp': 0.03}
+    "CRUDEOIL": {
+        "brokerage": 20,
+        "stt": 0,
+        "exchange_txn": 0.05,
+        "gst": 3.6,
+        "sebi": 0.1,
+        "stamp": 0.03,
+    },
+    "NATURALGAS": {
+        "brokerage": 20,
+        "stt": 0,
+        "exchange_txn": 0.05,
+        "gst": 3.6,
+        "sebi": 0.1,
+        "stamp": 0.03,
+    },
+    "GOLD": {
+        "brokerage": 20,
+        "stt": 0,
+        "exchange_txn": 0.05,
+        "gst": 3.6,
+        "sebi": 0.1,
+        "stamp": 0.03,
+    },
+    "SILVER": {
+        "brokerage": 20,
+        "stt": 0,
+        "exchange_txn": 0.05,
+        "gst": 3.6,
+        "sebi": 0.1,
+        "stamp": 0.03,
+    },
+    "NIFTY": {
+        "brokerage": 20,
+        "stt": 0.05,
+        "exchange_txn": 0.05,
+        "gst": 3.6,
+        "sebi": 0.1,
+        "stamp": 0.015,
+    },
+    "BANKNIFTY": {
+        "brokerage": 20,
+        "stt": 0.05,
+        "exchange_txn": 0.05,
+        "gst": 3.6,
+        "sebi": 0.1,
+        "stamp": 0.015,
+    },
+    "DEFAULT": {
+        "brokerage": 20,
+        "stt": 0,
+        "exchange_txn": 0.05,
+        "gst": 3.6,
+        "sebi": 0.1,
+        "stamp": 0.03,
+    },
 }
 
 
 def calculate_brokerage(instrument: str, turnover: float) -> Dict[str, float]:
     """
     Calculate brokerage and other charges for a trade.
-    
+
     Args:
         instrument: Instrument name
         turnover: Total turnover (entry_value + exit_value)
-        
+
     Returns:
         Dict with breakdown of charges
     """
-    costs = BROKERAGE_COSTS.get(instrument, BROKERAGE_COSTS['DEFAULT'])
-    
-    brokerage = costs['brokerage'] * 2  # Entry + Exit
-    stt = turnover * costs['stt'] / 100
-    exchange_txn = turnover * costs['exchange_txn'] / 100
+    costs = BROKERAGE_COSTS.get(instrument, BROKERAGE_COSTS["DEFAULT"])
+
+    brokerage = costs["brokerage"] * 2  # Entry + Exit
+    stt = turnover * costs["stt"] / 100
+    exchange_txn = turnover * costs["exchange_txn"] / 100
     gst = (brokerage + exchange_txn) * 18 / 100  # GST on brokerage + txn charges
-    sebi = turnover * costs['sebi'] / 100000  # SEBI charges per crore
-    stamp = turnover * costs['stamp'] / 100
-    
+    sebi = turnover * costs["sebi"] / 100000  # SEBI charges per crore
+    stamp = turnover * costs["stamp"] / 100
+
     total = brokerage + stt + exchange_txn + gst + sebi + stamp
-    
+
     return {
-        'brokerage': round(brokerage, 2),
-        'stt': round(stt, 2),
-        'exchange_txn': round(exchange_txn, 2),
-        'gst': round(gst, 2),
-        'sebi': round(sebi, 2),
-        'stamp_duty': round(stamp, 2),
-        'total': round(total, 2)
+        "brokerage": round(brokerage, 2),
+        "stt": round(stt, 2),
+        "exchange_txn": round(exchange_txn, 2),
+        "gst": round(gst, 2),
+        "sebi": round(sebi, 2),
+        "stamp_duty": round(stamp, 2),
+        "total": round(total, 2),
     }
 
 
 def get_todays_trades() -> List[Dict[str, Any]]:
     """Get all trades from today."""
     history = load_trade_history()
-    today = datetime.now().strftime('%Y-%m-%d')
-    
+    today = datetime.now().strftime("%Y-%m-%d")
+
     todays_trades = []
     for trade in history:
-        exit_time = trade.get('exit_time', '')
+        exit_time = trade.get("exit_time", "")
         if exit_time.startswith(today):
             todays_trades.append(trade)
-    
+
     return todays_trades
 
 
 def generate_html_report(
     trades: List[Dict[str, Any]],
     daily_pnl: Dict[str, Any],
-    performance_stats: Optional[Dict[str, Any]] = None
+    performance_stats: Optional[Dict[str, Any]] = None,
 ) -> str:
     """
     Generate an HTML report for the day's trading activity.
-    
+
     Args:
         trades: List of trade records
         daily_pnl: Daily P&L data
         performance_stats: Overall performance statistics
-        
+
     Returns:
         HTML string
     """
-    today = datetime.now().strftime('%Y-%m-%d')
-    now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    
+    today = datetime.now().strftime("%Y-%m-%d")
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
     # Calculate totals
-    total_pnl = sum(t.get('pnl', 0) for t in trades)
+    total_pnl = sum(t.get("pnl", 0) for t in trades)
     total_brokerage = 0
-    
+
     # Process trades for display
     trade_rows = []
     for trade in trades:
-        instrument = trade.get('instrument', 'N/A')
-        lot_size = trade.get('lot_size', INSTRUMENTS.get(instrument, {}).get('lot_size', 1))
-        
+        instrument = trade.get("instrument", "N/A")
+        lot_size = trade.get(
+            "lot_size", INSTRUMENTS.get(instrument, {}).get("lot_size", 1)
+        )
+
         # Calculate turnover and brokerage
-        option_entry = trade.get('option_entry', 0)
-        option_exit = trade.get('option_exit', 0)
+        option_entry = trade.get("option_entry", 0)
+        option_exit = trade.get("option_exit", 0)
         turnover = (option_entry + option_exit) * lot_size
-        
+
         brokerage = calculate_brokerage(instrument, turnover)
-        total_brokerage += brokerage['total']
-        
-        pnl = trade.get('pnl', 0)
-        net_pnl = pnl - brokerage['total']
-        
-        result_class = 'profit' if pnl > 0 else 'loss'
-        result_emoji = '✅' if pnl > 0 else '❌'
-        
-        trade_rows.append(f"""
+        total_brokerage += brokerage["total"]
+
+        pnl = trade.get("pnl", 0)
+        net_pnl = pnl - brokerage["total"]
+
+        result_class = "profit" if pnl > 0 else "loss"
+        result_emoji = "✅" if pnl > 0 else "❌"
+
+        trade_rows.append(
+            f"""
         <tr class="{result_class}">
             <td>{trade.get('entry_time', 'N/A')[-8:]}</td>
             <td>{trade.get('exit_time', 'N/A')[-8:]}</td>
@@ -160,18 +216,23 @@ def generate_html_report(
             <td class="{result_class}-text">₹{net_pnl:.2f}</td>
             <td>{trade.get('exit_reason', 'N/A')}</td>
         </tr>
-        """)
-    
-    trade_rows_html = '\n'.join(trade_rows) if trade_rows else '<tr><td colspan="11">No trades today</td></tr>'
-    
+        """
+        )
+
+    trade_rows_html = (
+        "\n".join(trade_rows)
+        if trade_rows
+        else '<tr><td colspan="11">No trades today</td></tr>'
+    )
+
     net_pnl = total_pnl - total_brokerage
-    
+
     # Performance summary
-    wins = daily_pnl.get('wins', 0)
-    losses = daily_pnl.get('losses', 0)
-    total_trades = daily_pnl.get('trades', len(trades))
+    wins = daily_pnl.get("wins", 0)
+    losses = daily_pnl.get("losses", 0)
+    total_trades = daily_pnl.get("trades", len(trades))
     win_rate = (wins / total_trades * 100) if total_trades > 0 else 0
-    
+
     # Overall stats section
     overall_stats_html = ""
     if performance_stats:
@@ -198,7 +259,7 @@ def generate_html_report(
             </div>
         </div>
         """
-    
+
     html = f"""
     <!DOCTYPE html>
     <html>
@@ -442,21 +503,21 @@ def generate_html_report(
     </body>
     </html>
     """
-    
+
     return html
 
 
 def generate_pdf_report(
     trades: List[Dict[str, Any]],
     daily_pnl: Dict[str, Any],
-    performance_stats: Optional[Dict[str, Any]] = None
+    performance_stats: Optional[Dict[str, Any]] = None,
 ) -> Optional[bytes]:
     """
     Generate a PDF report from the HTML content.
-    
+
     Requires weasyprint or pdfkit to be installed.
     Falls back to HTML if PDF generation fails.
-    
+
     Returns:
         PDF bytes or None if generation fails
     """
@@ -464,24 +525,26 @@ def generate_pdf_report(
         # Try weasyprint first
         try:
             from weasyprint import HTML
+
             html_content = generate_html_report(trades, daily_pnl, performance_stats)
             pdf_bytes = HTML(string=html_content).write_pdf()
             return pdf_bytes
         except ImportError:
             pass
-        
+
         # Try pdfkit as fallback
         try:
             import pdfkit
+
             html_content = generate_html_report(trades, daily_pnl, performance_stats)
             pdf_bytes = pdfkit.from_string(html_content, False)
             return pdf_bytes
         except ImportError:
             pass
-        
+
         logging.warning("PDF generation libraries not available (weasyprint or pdfkit)")
         return None
-        
+
     except Exception as e:
         logging.error(f"PDF generation error: {e}")
         return None
@@ -490,30 +553,30 @@ def generate_pdf_report(
 def save_report_locally(
     trades: List[Dict[str, Any]],
     daily_pnl: Dict[str, Any],
-    performance_stats: Optional[Dict[str, Any]] = None
+    performance_stats: Optional[Dict[str, Any]] = None,
 ) -> Optional[str]:
     """
     Save the report locally as HTML file.
-    
+
     Returns:
         Path to saved file or None on failure
     """
     try:
         # Ensure reports directory exists
         REPORT_DIR.mkdir(exist_ok=True)
-        
-        today = datetime.now().strftime('%Y-%m-%d')
+
+        today = datetime.now().strftime("%Y-%m-%d")
         filename = f"trading_report_{today}.html"
         filepath = REPORT_DIR / filename
-        
+
         html_content = generate_html_report(trades, daily_pnl, performance_stats)
-        
-        with open(filepath, 'w', encoding='utf-8') as f:
+
+        with open(filepath, "w", encoding="utf-8") as f:
             f.write(html_content)
-        
+
         logging.info(f"Report saved: {filepath}")
         return str(filepath)
-        
+
     except Exception as e:
         logging.error(f"Failed to save report locally: {e}")
         return None
@@ -522,55 +585,57 @@ def save_report_locally(
 def send_report_email(
     trades: List[Dict[str, Any]],
     daily_pnl: Dict[str, Any],
-    performance_stats: Optional[Dict[str, Any]] = None
+    performance_stats: Optional[Dict[str, Any]] = None,
 ) -> bool:
     """
     Send the daily report via email.
-    
+
     Returns:
         True if email sent successfully
     """
     if not EMAIL_ADDRESS or not EMAIL_PASSWORD:
         logging.warning("Email credentials not configured. Skipping email report.")
         return False
-    
+
     try:
-        today = datetime.now().strftime('%Y-%m-%d')
-        net_pnl = sum(t.get('pnl', 0) for t in trades)
-        
+        today = datetime.now().strftime("%Y-%m-%d")
+        net_pnl = sum(t.get("pnl", 0) for t in trades)
+
         # Create email message
-        msg = MIMEMultipart('alternative')
-        msg['Subject'] = f"📊 Trading Report - {today} | Net P&L: ₹{net_pnl:,.2f}"
-        msg['From'] = EMAIL_ADDRESS
-        msg['To'] = EMAIL_RECIPIENT
-        
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = f"📊 Trading Report - {today} | Net P&L: ₹{net_pnl:,.2f}"
+        msg["From"] = EMAIL_ADDRESS
+        msg["To"] = EMAIL_RECIPIENT
+
         # Generate HTML content
         html_content = generate_html_report(trades, daily_pnl, performance_stats)
-        msg.attach(MIMEText(html_content, 'html'))
-        
+        msg.attach(MIMEText(html_content, "html"))
+
         # Try to attach PDF
         pdf_bytes = generate_pdf_report(trades, daily_pnl, performance_stats)
         if pdf_bytes:
-            pdf_attachment = MIMEBase('application', 'pdf')
+            pdf_attachment = MIMEBase("application", "pdf")
             pdf_attachment.set_payload(pdf_bytes)
             encoders.encode_base64(pdf_attachment)
             pdf_attachment.add_header(
-                'Content-Disposition',
-                f'attachment; filename="trading_report_{today}.pdf"'
+                "Content-Disposition",
+                f'attachment; filename="trading_report_{today}.pdf"',
             )
             msg.attach(pdf_attachment)
-        
+
         # Send email
         with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
             server.starttls()
             server.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
             server.send_message(msg)
-        
+
         logging.info(f"📧 EOD report sent to {EMAIL_RECIPIENT}")
         return True
-        
+
     except smtplib.SMTPAuthenticationError:
-        logging.error("Email authentication failed. Check EMAIL_ADDRESS and EMAIL_PASSWORD.")
+        logging.error(
+            "Email authentication failed. Check EMAIL_ADDRESS and EMAIL_PASSWORD."
+        )
         return False
     except smtplib.SMTPException as e:
         logging.error(f"SMTP error: {e}")
@@ -583,41 +648,41 @@ def send_report_email(
 def send_report_telegram() -> bool:
     """
     Send a summary of the daily report to Telegram.
-    
+
     Returns:
         True if sent successfully
     """
     try:
         trades = get_todays_trades()
         daily_pnl = load_daily_pnl()
-        
+
         if not trades:
             send_alert("📊 *End of Day Report*\n\nNo trades executed today.")
             return True
-        
+
         # Calculate summary
-        total_pnl = sum(t.get('pnl', 0) for t in trades)
+        total_pnl = sum(t.get("pnl", 0) for t in trades)
         total_brokerage = 0
-        
+
         for trade in trades:
-            instrument = trade.get('instrument', 'DEFAULT')
-            lot_size = trade.get('lot_size', 1)
-            option_entry = trade.get('option_entry', 0)
-            option_exit = trade.get('option_exit', 0)
+            instrument = trade.get("instrument", "DEFAULT")
+            lot_size = trade.get("lot_size", 1)
+            option_entry = trade.get("option_entry", 0)
+            option_exit = trade.get("option_exit", 0)
             turnover = (option_entry + option_exit) * lot_size
             brokerage = calculate_brokerage(instrument, turnover)
-            total_brokerage += brokerage['total']
-        
+            total_brokerage += brokerage["total"]
+
         net_pnl = total_pnl - total_brokerage
-        wins = daily_pnl.get('wins', 0)
-        losses = daily_pnl.get('losses', 0)
+        wins = daily_pnl.get("wins", 0)
+        losses = daily_pnl.get("losses", 0)
         total_trades = len(trades)
         win_rate = (wins / total_trades * 100) if total_trades > 0 else 0
-        
+
         # Build message
         emoji = "📈" if net_pnl > 0 else "📉"
         result_emoji = "✅" if net_pnl > 0 else "❌"
-        
+
         message = f"""
 {emoji} *End of Day Report*
 ━━━━━━━━━━━━━━━━━━
@@ -635,20 +700,20 @@ def send_report_telegram() -> bool:
 
 📝 *Trade Details*
 """
-        
+
         # Add individual trade summaries
         for trade in trades[-5:]:  # Last 5 trades
-            trade_emoji = "✅" if trade.get('pnl', 0) > 0 else "❌"
+            trade_emoji = "✅" if trade.get("pnl", 0) > 0 else "❌"
             message += f"{trade_emoji} {trade.get('instrument', 'N/A')} {trade.get('option_type', '')}: ₹{trade.get('pnl', 0):,.2f}\n"
-        
+
         if len(trades) > 5:
             message += f"\n... and {len(trades) - 5} more trades"
-        
+
         message += "\n━━━━━━━━━━━━━━━━━━"
-        
+
         send_alert(message)
         return True
-        
+
     except Exception as e:
         logging.error(f"Telegram report error: {e}")
         return False
@@ -657,27 +722,27 @@ def send_report_telegram() -> bool:
 def generate_and_send_eod_report() -> None:
     """
     Main function to generate and distribute the EOD report.
-    
+
     This is called by the scheduler at 11:35 PM.
     """
     logging.info("🕐 Generating End of Day Report...")
-    
+
     try:
         trades = get_todays_trades()
         daily_pnl = load_daily_pnl()
         performance_stats = get_performance_stats()
-        
+
         # Save report locally
         save_report_locally(trades, daily_pnl, performance_stats)
-        
+
         # Send via email
         send_report_email(trades, daily_pnl, performance_stats)
-        
+
         # Send summary to Telegram
         send_report_telegram()
-        
+
         logging.info("✅ End of Day Report completed")
-        
+
     except Exception as e:
         logging.error(f"EOD Report generation failed: {e}")
         send_alert(f"⚠️ *EOD Report Failed*\nError: {str(e)[:100]}")
@@ -686,22 +751,22 @@ def generate_and_send_eod_report() -> None:
 def schedule_eod_report() -> threading.Thread:
     """
     Schedule the EOD report job.
-    
+
     Returns:
         Thread running the scheduler
     """
     schedule.every().day.at(REPORT_TIME).do(generate_and_send_eod_report)
-    
+
     logging.info(f"📅 EOD Report scheduled for {REPORT_TIME} daily")
-    
+
     def run_scheduler():
         while True:
             schedule.run_pending()
             time.sleep(60)
-    
+
     scheduler_thread = threading.Thread(target=run_scheduler, daemon=True)
     scheduler_thread.start()
-    
+
     return scheduler_thread
 
 
@@ -716,64 +781,63 @@ def stop_eod_report() -> None:
 # =============================================================================
 if __name__ == "__main__":
     logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s [%(levelname)s] %(message)s"
+        level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s"
     )
-    
+
     # Create sample trades for testing
     sample_trades = [
         {
-            'instrument': 'CRUDEOIL',
-            'entry_time': f"{datetime.now().strftime('%Y-%m-%d')} 10:15:00",
-            'exit_time': f"{datetime.now().strftime('%Y-%m-%d')} 11:30:00",
-            'trade_type': 'BUY',
-            'option_type': 'CE',
-            'future_entry': 5250,
-            'future_exit': 5280,
-            'option_entry': 120,
-            'option_exit': 155,
-            'initial_sl': 5230,
-            'final_sl': 5250,
-            'pnl': 3500,
-            'r_multiple': 1.5,
-            'exit_reason': 'Target Hit',
-            'lot_size': 100
+            "instrument": "CRUDEOIL",
+            "entry_time": f"{datetime.now().strftime('%Y-%m-%d')} 10:15:00",
+            "exit_time": f"{datetime.now().strftime('%Y-%m-%d')} 11:30:00",
+            "trade_type": "BUY",
+            "option_type": "CE",
+            "future_entry": 5250,
+            "future_exit": 5280,
+            "option_entry": 120,
+            "option_exit": 155,
+            "initial_sl": 5230,
+            "final_sl": 5250,
+            "pnl": 3500,
+            "r_multiple": 1.5,
+            "exit_reason": "Target Hit",
+            "lot_size": 100,
         },
         {
-            'instrument': 'CRUDEOIL',
-            'entry_time': f"{datetime.now().strftime('%Y-%m-%d')} 14:00:00",
-            'exit_time': f"{datetime.now().strftime('%Y-%m-%d')} 15:15:00",
-            'trade_type': 'SELL',
-            'option_type': 'PE',
-            'future_entry': 5300,
-            'future_exit': 5320,
-            'option_entry': 140,
-            'option_exit': 105,
-            'initial_sl': 5320,
-            'final_sl': 5320,
-            'pnl': -3500,
-            'r_multiple': -1.0,
-            'exit_reason': 'Stop Loss Hit',
-            'lot_size': 100
-        }
+            "instrument": "CRUDEOIL",
+            "entry_time": f"{datetime.now().strftime('%Y-%m-%d')} 14:00:00",
+            "exit_time": f"{datetime.now().strftime('%Y-%m-%d')} 15:15:00",
+            "trade_type": "SELL",
+            "option_type": "PE",
+            "future_entry": 5300,
+            "future_exit": 5320,
+            "option_entry": 140,
+            "option_exit": 105,
+            "initial_sl": 5320,
+            "final_sl": 5320,
+            "pnl": -3500,
+            "r_multiple": -1.0,
+            "exit_reason": "Stop Loss Hit",
+            "lot_size": 100,
+        },
     ]
-    
+
     sample_daily_pnl = {
-        'date': datetime.now().strftime('%Y-%m-%d'),
-        'pnl': 0,
-        'trades': 2,
-        'wins': 1,
-        'losses': 1
+        "date": datetime.now().strftime("%Y-%m-%d"),
+        "pnl": 0,
+        "trades": 2,
+        "wins": 1,
+        "losses": 1,
     }
-    
+
     # Generate and save test report
     html = generate_html_report(sample_trades, sample_daily_pnl)
-    
+
     REPORT_DIR.mkdir(exist_ok=True)
-    test_file = REPORT_DIR / 'test_report.html'
-    
-    with open(test_file, 'w', encoding='utf-8') as f:
+    test_file = REPORT_DIR / "test_report.html"
+
+    with open(test_file, "w", encoding="utf-8") as f:
         f.write(html)
-    
+
     print(f"✅ Test report saved to: {test_file}")
     print("Open in browser to preview the report.")

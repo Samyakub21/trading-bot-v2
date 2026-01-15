@@ -12,10 +12,7 @@ import json
 import json
 
 
-mock_creds = {
-    "client_id": "test_client",
-    "access_token": "test_token"
-}
+mock_creds = {"client_id": "test_client", "access_token": "test_token"}
 
 mock_config = {
     "MAX_DAILY_LOSS": 2000,
@@ -34,7 +31,7 @@ mock_config = {
     "POLL_FALLBACK_THRESHOLD": 5,
     "POLL_COOLDOWN": 2,
     "ENABLED_INSTRUMENTS": ["CRUDEOIL"],
-    "INSTRUMENT_PRIORITY": {"CRUDEOIL": 1}
+    "INSTRUMENT_PRIORITY": {"CRUDEOIL": 1},
 }
 
 
@@ -42,11 +39,12 @@ mock_config = {
 # FIXTURES
 # =============================================================================
 
+
 @pytest.fixture
 def mock_dhan_client():
     """Create comprehensive mock Dhan client"""
     mock = MagicMock()
-    
+
     # Constants
     mock.BUY = "BUY"
     mock.SELL = "SELL"
@@ -56,7 +54,7 @@ def mock_dhan_client():
     mock.CNC = "CNC"
     mock.NSE = "NSE"
     mock.MCX = "MCX"
-    
+
     return mock
 
 
@@ -96,7 +94,7 @@ def empty_trade_state():
         "option_entry": 0,
         "lot_size": 0,
         "exchange_segment_str": None,
-        "entry_time": None
+        "entry_time": None,
     }
 
 
@@ -115,7 +113,7 @@ def active_buy_trade():
         "option_entry": 150,
         "lot_size": 10,
         "exchange_segment_str": "MCX_COMM",  # V2 API format
-        "entry_time": "2026-01-10 10:00:00"
+        "entry_time": "2026-01-10 10:00:00",
     }
 
 
@@ -123,15 +121,13 @@ def active_buy_trade():
 # MOCK BROKER RESPONSES
 # =============================================================================
 
+
 @pytest.fixture
 def mock_order_response():
     """Mock successful order placement response"""
     return {
-        'status': 'success',
-        'data': {
-            'orderId': 'ORDER123456',
-            'orderStatus': 'PENDING'
-        }
+        "status": "success",
+        "data": {"orderId": "ORDER123456", "orderStatus": "PENDING"},
     }
 
 
@@ -139,19 +135,19 @@ def mock_order_response():
 def mock_position_response():
     """Mock positions API response - V2 API format"""
     return {
-        'status': 'success',
-        'data': [
+        "status": "success",
+        "data": [
             {
-                'securityId': '12345',
-                'tradingSymbol': 'CRUDEOIL26JAN6000CE',
-                'exchangeSegment': 'MCX_COMM',  # V2 API format
-                'netQty': 10,
-                'buyAvg': 150.0,  # V2 uses buyAvg/sellAvg
-                'sellAvg': 0.0,
-                'unrealizedProfit': 200.0,
-                'productType': 'INTRADAY'
+                "securityId": "12345",
+                "tradingSymbol": "CRUDEOIL26JAN6000CE",
+                "exchangeSegment": "MCX_COMM",  # V2 API format
+                "netQty": 10,
+                "buyAvg": 150.0,  # V2 uses buyAvg/sellAvg
+                "sellAvg": 0.0,
+                "unrealizedProfit": 200.0,
+                "productType": "INTRADAY",
             }
-        ]
+        ],
     }
 
 
@@ -159,13 +155,13 @@ def mock_position_response():
 def mock_order_status_response():
     """Mock order status check response - V2 API format"""
     return {
-        'status': 'success',
-        'data': {
-            'orderId': 'ORDER123456',
-            'orderStatus': 'TRADED',
-            'tradedQuantity': 10,
-            'averageTradedPrice': 150.0  # V2 field name
-        }
+        "status": "success",
+        "data": {
+            "orderId": "ORDER123456",
+            "orderStatus": "TRADED",
+            "tradedQuantity": 10,
+            "averageTradedPrice": 150.0,  # V2 field name
+        },
     }
 
 
@@ -173,79 +169,77 @@ def mock_order_status_response():
 # INTEGRATION TEST: FULL TRADE ENTRY FLOW
 # =============================================================================
 
+
 class TestTradeEntryIntegration:
     """Integration tests for trade entry workflow"""
-    
-    @patch('manager.dhan')
-    @patch('manager.socket_handler')
-    @patch('manager.send_alert')
-    @patch('manager.save_state')
+
+    @patch("manager.dhan")
+    @patch("manager.socket_handler")
+    @patch("manager.send_alert")
+    @patch("manager.save_state")
     def test_full_buy_signal_to_entry(
-        self, 
-        mock_save, 
-        mock_alert, 
-        mock_socket, 
+        self,
+        mock_save,
+        mock_alert,
+        mock_socket,
         mock_dhan,
         mock_instruments,
         empty_trade_state,
-        mock_order_response
+        mock_order_response,
     ):
         """Test complete flow from BUY signal to position entry"""
         # Setup mocks
         mock_dhan.place_order.return_value = mock_order_response
         mock_socket.get_latest_ltp.return_value = 6000.0
-        
+
         # Simulate signal analysis result
         signal = {
-            'type': 'BUY',
-            'instrument': 'CRUDEOIL',
-            'entry_price': 6000.0,
-            'stop_loss': 5980.0,
+            "type": "BUY",
+            "instrument": "CRUDEOIL",
+            "entry_price": 6000.0,
+            "stop_loss": 5980.0,
         }
-        
+
         # Verify the signal is valid
-        assert signal['type'] in ['BUY', 'SELL']
-        assert signal['stop_loss'] < signal['entry_price']  # For BUY
-        
+        assert signal["type"] in ["BUY", "SELL"]
+        assert signal["stop_loss"] < signal["entry_price"]  # For BUY
+
         # Calculate option strike
-        entry = signal['entry_price']
-        strike_step = mock_instruments['CRUDEOIL']['strike_step']
+        entry = signal["entry_price"]
+        strike_step = mock_instruments["CRUDEOIL"]["strike_step"]
         atm_strike = round(entry / strike_step) * strike_step
-        
+
         assert atm_strike == 6000  # ATM for 6000 with step 50
-    
-    @patch('manager.dhan')
+
+    @patch("manager.dhan")
     def test_order_placement_with_limit_buffer(
-        self, 
-        mock_dhan, 
-        mock_instruments,
-        mock_order_response
+        self, mock_dhan, mock_instruments, mock_order_response
     ):
         """Test that limit orders include proper buffer"""
         mock_dhan.place_order.return_value = mock_order_response
-        
+
         option_ltp = 150.0
         limit_buffer = 0.5  # 0.5% buffer
-        
+
         # For BUY, add buffer
         buy_limit_price = option_ltp * (1 + limit_buffer / 100)
         assert buy_limit_price > option_ltp
-        
+
         # For SELL, subtract buffer
         sell_limit_price = option_ltp * (1 - limit_buffer / 100)
         assert sell_limit_price < option_ltp
-    
+
     def test_lot_size_calculation(self, mock_instruments):
         """Test lot size is correctly fetched from instrument config"""
-        instrument = mock_instruments['CRUDEOIL']
-        lot_size = instrument['lot_size']
-        
+        instrument = mock_instruments["CRUDEOIL"]
+        lot_size = instrument["lot_size"]
+
         assert lot_size == 10
-        
+
         # Calculate position value
         option_premium = 150.0
         position_value = option_premium * lot_size
-        
+
         assert position_value == 1500.0
 
 
@@ -253,55 +247,56 @@ class TestTradeEntryIntegration:
 # INTEGRATION TEST: TRAILING STOP LOSS MANAGEMENT
 # =============================================================================
 
+
 class TestTrailingStopLossIntegration:
     """Integration tests for trailing stop loss workflow"""
-    
+
     def test_step_ladder_progression(self, active_buy_trade):
         """Test complete step ladder progression from entry to target"""
-        entry = active_buy_trade['entry']
-        initial_sl = active_buy_trade['initial_sl']
+        entry = active_buy_trade["entry"]
+        initial_sl = active_buy_trade["initial_sl"]
         risk_unit = abs(entry - initial_sl)  # 20 points
-        
+
         # Track SL changes through step levels
         sl_history = [initial_sl]
-        
+
         # Step 1: At 2R, lock 1R
         price_at_2r = entry + (2 * risk_unit)  # 6040
         new_sl = entry + (1 * risk_unit)  # 6020
         sl_history.append(new_sl)
-        
+
         assert price_at_2r == 6040
         assert new_sl == 6020
-        
+
         # Step 2: At 3R, lock 2R
         price_at_3r = entry + (3 * risk_unit)  # 6060
         new_sl = entry + (2 * risk_unit)  # 6040
         sl_history.append(new_sl)
-        
+
         assert price_at_3r == 6060
         assert new_sl == 6040
-        
+
         # Step 3: At 4R, lock 3R
         price_at_4r = entry + (4 * risk_unit)  # 6080
         new_sl = entry + (3 * risk_unit)  # 6060
         sl_history.append(new_sl)
-        
+
         # Target: At 5R, exit
         target_price = entry + (5 * risk_unit)  # 6100
-        
+
         assert target_price == 6100
-        
+
         # Verify SL only moves up
         for i in range(1, len(sl_history)):
-            assert sl_history[i] >= sl_history[i-1]
-    
+            assert sl_history[i] >= sl_history[i - 1]
+
     def test_sl_update_triggers_order_modification(self, active_buy_trade):
         """Test that SL update should trigger order modification"""
-        old_sl = active_buy_trade['sl']
+        old_sl = active_buy_trade["sl"]
         new_sl = old_sl + 20  # Move SL up by 1R
-        
+
         # SL should only move in profit direction
-        if active_buy_trade['type'] == 'BUY':
+        if active_buy_trade["type"] == "BUY":
             assert new_sl > old_sl
         else:
             assert new_sl < old_sl
@@ -311,15 +306,16 @@ class TestTrailingStopLossIntegration:
 # INTEGRATION TEST: POSITION EXIT FLOW
 # =============================================================================
 
+
 class TestPositionExitIntegration:
     """Integration tests for position exit workflow"""
-    
-    @patch('manager.dhan')
-    @patch('manager.socket_handler')
-    @patch('manager.save_state')
-    @patch('manager.update_daily_pnl')
-    @patch('manager.save_trade_to_history')
-    @patch('manager.send_alert')
+
+    @patch("manager.dhan")
+    @patch("manager.socket_handler")
+    @patch("manager.save_state")
+    @patch("manager.update_daily_pnl")
+    @patch("manager.save_trade_to_history")
+    @patch("manager.send_alert")
     def test_full_exit_on_stop_loss(
         self,
         mock_alert,
@@ -328,54 +324,49 @@ class TestPositionExitIntegration:
         mock_save,
         mock_socket,
         mock_dhan,
-        active_buy_trade
+        active_buy_trade,
     ):
         """Test complete exit flow when stop loss hit"""
         # Setup
         mock_socket.get_option_ltp.return_value = 120.0  # Exit at loss
         mock_socket.get_market_feed.return_value = MagicMock()
-        mock_pnl.return_value = {'daily_pnl': -300, 'win_count': 0, 'loss_count': 1}
-        
+        mock_pnl.return_value = {"daily_pnl": -300, "win_count": 0, "loss_count": 1}
+
         # Calculate P&L
-        entry_premium = active_buy_trade['option_entry']
+        entry_premium = active_buy_trade["option_entry"]
         exit_premium = 120.0
-        lot_size = active_buy_trade['lot_size']
-        
+        lot_size = active_buy_trade["lot_size"]
+
         pnl = (exit_premium - entry_premium) * lot_size
-        
+
         assert pnl == -300  # Loss of 30 points * 10 lots
-    
-    @patch('manager.dhan')
-    @patch('manager.socket_handler')
-    def test_full_exit_on_target(
-        self,
-        mock_socket,
-        mock_dhan,
-        active_buy_trade
-    ):
+
+    @patch("manager.dhan")
+    @patch("manager.socket_handler")
+    def test_full_exit_on_target(self, mock_socket, mock_dhan, active_buy_trade):
         """Test complete exit flow when target reached"""
         mock_socket.get_option_ltp.return_value = 250.0  # Exit at profit
-        
+
         # Calculate P&L
-        entry_premium = active_buy_trade['option_entry']
+        entry_premium = active_buy_trade["option_entry"]
         exit_premium = 250.0
-        lot_size = active_buy_trade['lot_size']
-        
+        lot_size = active_buy_trade["lot_size"]
+
         pnl = (exit_premium - entry_premium) * lot_size
-        
+
         assert pnl == 1000  # Profit of 100 points * 10 lots
-    
+
     def test_r_multiple_calculation_on_exit(self, active_buy_trade):
         """Test R-multiple calculation for exit"""
-        entry = active_buy_trade['entry']
-        initial_sl = active_buy_trade['initial_sl']
+        entry = active_buy_trade["entry"]
+        initial_sl = active_buy_trade["initial_sl"]
         risk_unit = abs(entry - initial_sl)
-        
+
         # Exit at 3R
         exit_price = entry + (3 * risk_unit)
         profit_points = exit_price - entry
         r_multiple = profit_points / risk_unit
-        
+
         assert r_multiple == 3.0
 
 
@@ -383,63 +374,58 @@ class TestPositionExitIntegration:
 # INTEGRATION TEST: RECONCILIATION WITH BROKER
 # =============================================================================
 
+
 class TestReconciliationIntegration:
     """Integration tests for position reconciliation with broker"""
-    
-    @patch('position_reconciliation.dhan')
+
+    @patch("position_reconciliation.dhan")
     def test_startup_reconciliation_passes(
-        self, 
-        mock_dhan, 
-        active_buy_trade,
-        mock_position_response
+        self, mock_dhan, active_buy_trade, mock_position_response
     ):
         """Test startup reconciliation when positions match"""
         from position_reconciliation import reconcile_positions, ReconciliationStatus
-        
+
         mock_dhan.get_positions.return_value = mock_position_response
-        
+
         result = reconcile_positions(active_buy_trade)
-        
+
         assert result.status == ReconciliationStatus.MATCHED
-    
-    @patch('position_reconciliation.dhan')
-    @patch('position_reconciliation.send_alert')
+
+    @patch("position_reconciliation.dhan")
+    @patch("position_reconciliation.send_alert")
     def test_detect_orphan_position_at_broker(
-        self, 
+        self,
         mock_alert,
-        mock_dhan, 
+        mock_dhan,
         empty_trade_state,
         mock_position_response,
-        mock_instruments
+        mock_instruments,
     ):
         """Test detection of position at broker not tracked locally"""
         from position_reconciliation import reconcile_positions, ReconciliationStatus
-        
+
         mock_dhan.get_positions.return_value = mock_position_response
-        
-        with patch('position_reconciliation.INSTRUMENTS', mock_instruments):
+
+        with patch("position_reconciliation.INSTRUMENTS", mock_instruments):
             result = reconcile_positions(empty_trade_state)
-        
+
         assert result.status == ReconciliationStatus.MISMATCH_BROKER_ONLY
-    
-    @patch('position_reconciliation.dhan')
-    @patch('position_reconciliation.send_alert')
+
+    @patch("position_reconciliation.dhan")
+    @patch("position_reconciliation.send_alert")
     def test_detect_phantom_local_position(
-        self, 
-        mock_alert,
-        mock_dhan, 
-        active_buy_trade
+        self, mock_alert, mock_dhan, active_buy_trade
     ):
         """Test detection of local position not found at broker"""
         from position_reconciliation import reconcile_positions, ReconciliationStatus
-        
+
         mock_dhan.get_positions.return_value = {
-            'status': 'success',
-            'data': []  # No positions at broker
+            "status": "success",
+            "data": [],  # No positions at broker
         }
-        
+
         result = reconcile_positions(active_buy_trade)
-        
+
         assert result.status == ReconciliationStatus.MISMATCH_LOCAL_ONLY
 
 
@@ -447,90 +433,91 @@ class TestReconciliationIntegration:
 # INTEGRATION TEST: CONTRACT AUTO-UPDATE
 # =============================================================================
 
+
 class TestContractUpdateIntegration:
     """Integration tests for contract auto-update"""
-    
-    @patch('contract_updater.download_scrip_master')
-    @patch('contract_updater.load_scrip_master')
+
+    @patch("contract_updater.download_scrip_master")
+    @patch("contract_updater.load_scrip_master")
     def test_auto_update_refreshes_contracts(
-        self, 
-        mock_load, 
-        mock_download, 
-        mock_instruments
+        self, mock_load, mock_download, mock_instruments
     ):
         """Test that auto-update fetches new contract IDs"""
         from contract_updater import update_all_instruments
-        
+
         mock_download.return_value = True
-        
+
         # New contracts with updated IDs
         today = datetime.now()
-        new_expiry = (today + timedelta(days=20)).strftime('%Y-%m-%d')
-        
+        new_expiry = (today + timedelta(days=20)).strftime("%Y-%m-%d")
+
         mock_load.return_value = [
             {
-                'SEM_SMST_SECURITY_ID': 'NEW_464926',
-                'SEM_EXM_EXCH_ID': 'MCX',
-                'SEM_INSTRUMENT_NAME': 'FUTCOM',
-                'SEM_TRADING_SYMBOL': 'CRUDEOIL-26FEB-FUT',
-                'SEM_CUSTOM_SYMBOL': 'CRUDEOIL FEB FUT',
-                'SEM_EXPIRY_DATE': new_expiry,
-                'SEM_LOT_UNITS': '10',
+                "SEM_SMST_SECURITY_ID": "NEW_464926",
+                "SEM_EXM_EXCH_ID": "MCX",
+                "SEM_INSTRUMENT_NAME": "FUTCOM",
+                "SEM_TRADING_SYMBOL": "CRUDEOIL-26FEB-FUT",
+                "SEM_CUSTOM_SYMBOL": "CRUDEOIL FEB FUT",
+                "SEM_EXPIRY_DATE": new_expiry,
+                "SEM_LOT_UNITS": "10",
             }
         ]
-        
+
         result = update_all_instruments(mock_instruments)
-        
-        assert result['CRUDEOIL']['future_id'] == 'NEW_464926'
-    
-    @patch('contract_updater.load_contract_cache')
+
+        assert result["CRUDEOIL"]["future_id"] == "NEW_464926"
+
+    @patch("contract_updater.load_contract_cache")
     def test_use_cache_when_valid(self, mock_cache, mock_instruments):
         """Test that valid cache is used instead of fetching"""
         from contract_updater import auto_update_instruments_on_startup
-        
+
         mock_cache.return_value = {
-            'CRUDEOIL': {
-                'future_id': 'CACHED_ID',
-                'expiry_date': '2026-01-16',
-                'lot_size': 10
+            "CRUDEOIL": {
+                "future_id": "CACHED_ID",
+                "expiry_date": "2026-01-16",
+                "lot_size": 10,
             }
         }
-        
+
         result = auto_update_instruments_on_startup(mock_instruments)
-        
-        assert result['CRUDEOIL']['future_id'] == 'CACHED_ID'
+
+        assert result["CRUDEOIL"]["future_id"] == "CACHED_ID"
 
 
 # =============================================================================
 # INTEGRATION TEST: WEBSOCKET RECONNECTION DURING TRADE
 # =============================================================================
 
+
 class TestWebSocketReconnectionIntegration:
     """Integration tests for WebSocket reconnection during active trade"""
-    
-    def test_socket_reconnect_preserves_subscriptions(self, active_buy_trade, mock_instruments):
+
+    def test_socket_reconnect_preserves_subscriptions(
+        self, active_buy_trade, mock_instruments
+    ):
         """Test that reconnection re-subscribes to option feed"""
         import socket_handler
-        
+
         # Simulate active trade with option subscription
-        option_id = active_buy_trade['option_id']
-        
+        option_id = active_buy_trade["option_id"]
+
         # Verify option_id is preserved for re-subscription
         assert option_id is not None
-        assert option_id == '12345'
-    
+        assert option_id == "12345"
+
     def test_ltp_recovery_after_reconnect(self):
         """Test that LTP is recovered after socket reconnection"""
         import socket_handler
-        
+
         # Save state before disconnect
         socket_handler.LATEST_LTP = 6000.0
         old_ltp = socket_handler.get_latest_ltp()
-        
+
         # Simulate reconnection
         socket_handler.SOCKET_RECONNECT_EVENT.set()
         socket_handler.SOCKET_RECONNECT_EVENT.clear()
-        
+
         # LTP should remain (or be refreshed on next tick)
         assert socket_handler.LATEST_LTP == old_ltp
 
@@ -539,58 +526,64 @@ class TestWebSocketReconnectionIntegration:
 # INTEGRATION TEST: FULL TRADING DAY SIMULATION
 # =============================================================================
 
+
 class TestFullTradingDaySimulation:
     """Simulate a complete trading day workflow"""
-    
+
     def test_day_start_sequence(self, mock_instruments, empty_trade_state):
         """Test proper sequence of operations at day start"""
         sequence = []
-        
+
         # 1. Contract update
-        sequence.append('contract_update')
-        
+        sequence.append("contract_update")
+
         # 2. Position reconciliation
-        sequence.append('reconcile')
-        
+        sequence.append("reconcile")
+
         # 3. Start WebSocket
-        sequence.append('socket_start')
-        
+        sequence.append("socket_start")
+
         # 4. Start scanning
-        sequence.append('scanner_start')
-        
-        expected_sequence = ['contract_update', 'reconcile', 'socket_start', 'scanner_start']
+        sequence.append("scanner_start")
+
+        expected_sequence = [
+            "contract_update",
+            "reconcile",
+            "socket_start",
+            "scanner_start",
+        ]
         assert sequence == expected_sequence
-    
+
     def test_trade_cooldown_after_loss(self, active_buy_trade):
         """Test that cooldown is applied after losing trade"""
         # Simulate loss
         is_loss = True
         cooldown_minutes = 3
-        
+
         if is_loss:
             cooldown_end = datetime.now() + timedelta(minutes=cooldown_minutes)
-        
+
         # Verify cooldown is set
         assert cooldown_end > datetime.now()
-    
+
     def test_daily_pnl_tracking(self):
         """Test daily P&L accumulation across multiple trades"""
         daily_pnl = 0
         trades = [
-            {'pnl': 500, 'is_win': True},
-            {'pnl': -300, 'is_win': False},
-            {'pnl': 800, 'is_win': True},
+            {"pnl": 500, "is_win": True},
+            {"pnl": -300, "is_win": False},
+            {"pnl": 800, "is_win": True},
         ]
-        
+
         for trade in trades:
-            daily_pnl += trade['pnl']
-        
+            daily_pnl += trade["pnl"]
+
         assert daily_pnl == 1000
-        
+
         # Count wins and losses
-        wins = sum(1 for t in trades if t['is_win'])
+        wins = sum(1 for t in trades if t["is_win"])
         losses = len(trades) - wins
-        
+
         assert wins == 2
         assert losses == 1
 
@@ -599,40 +592,44 @@ class TestFullTradingDaySimulation:
 # INTEGRATION TEST: ERROR HANDLING
 # =============================================================================
 
+
 class TestErrorHandlingIntegration:
     """Integration tests for error handling scenarios"""
-    
-    @patch('manager.dhan')
+
+    @patch("manager.dhan")
     def test_order_rejection_handling(self, mock_dhan):
         """Test handling of order rejection from broker"""
         mock_dhan.place_order.return_value = {
-            'status': 'failure',
-            'remarks': 'Insufficient margin'
+            "status": "failure",
+            "remarks": "Insufficient margin",
         }
-        
+
         # Verify rejection is detected
         response = mock_dhan.place_order()
-        assert response['status'] == 'failure'
-    
-    @patch('manager.dhan')
+        assert response["status"] == "failure"
+
+    @patch("manager.dhan")
     def test_api_timeout_handling(self, mock_dhan):
         """Test handling of API timeout"""
         mock_dhan.place_order.side_effect = TimeoutError("API timeout")
-        
+
         with pytest.raises(TimeoutError):
             mock_dhan.place_order()
-    
+
     def test_invalid_signal_rejected(self):
         """Test that invalid signals are rejected"""
         invalid_signal = {
-            'type': 'BUY',
-            'entry_price': 6000,
-            'stop_loss': 6020,  # SL above entry for BUY is invalid
+            "type": "BUY",
+            "entry_price": 6000,
+            "stop_loss": 6020,  # SL above entry for BUY is invalid
         }
-        
+
         # Validate signal
         is_valid = True
-        if invalid_signal['type'] == 'BUY' and invalid_signal['stop_loss'] >= invalid_signal['entry_price']:
+        if (
+            invalid_signal["type"] == "BUY"
+            and invalid_signal["stop_loss"] >= invalid_signal["entry_price"]
+        ):
             is_valid = False
 
         assert is_valid is False
@@ -642,20 +639,25 @@ class TestErrorHandlingIntegration:
 # END-TO-END BOT SIMULATION
 # =============================================================================
 
+
 class TestBotEndToEnd:
     """Comprehensive end-to-end simulation of the trading bot."""
 
-    @patch('builtins.open', new_callable=mock_open, read_data='{"client_id": "test", "access_token": "test"}')
-    @patch('Tradebot.heartbeat')              # Mocks Heartbeat thread
-    @patch('Tradebot.contract_updater')       # Mocks Contract Updater thread
-    @patch('Tradebot.eod_report')             # Mocks EOD Report thread
-    @patch('Tradebot.position_reconciliation')# Mocks Reconciliation thread
-    @patch('Tradebot.socket_handler')
-    @patch('Tradebot.time.sleep')
-    @patch('Tradebot.scanner')
-    @patch('Tradebot.manager')
-    @patch('Tradebot.auto_update_instruments_on_startup')
-    @patch('Tradebot.reconcile_on_startup')
+    @patch(
+        "builtins.open",
+        new_callable=mock_open,
+        read_data='{"client_id": "test", "access_token": "test"}',
+    )
+    @patch("Tradebot.heartbeat")  # Mocks Heartbeat thread
+    @patch("Tradebot.contract_updater")  # Mocks Contract Updater thread
+    @patch("Tradebot.eod_report")  # Mocks EOD Report thread
+    @patch("Tradebot.position_reconciliation")  # Mocks Reconciliation thread
+    @patch("Tradebot.socket_handler")
+    @patch("Tradebot.time.sleep")
+    @patch("Tradebot.scanner")
+    @patch("Tradebot.manager")
+    @patch("Tradebot.auto_update_instruments_on_startup")
+    @patch("Tradebot.reconcile_on_startup")
     def test_full_trading_cycle_simulation(
         self,
         mock_reconcile_startup,
@@ -664,11 +666,11 @@ class TestBotEndToEnd:
         mock_scanner,
         mock_sleep,
         mock_socket,
-        mock_recon_module,   # New arg for position_reconciliation
-        mock_eod,            # New arg for eod_report
-        mock_contracts,      # New arg for contract_updater
-        mock_heartbeat,      # New arg for heartbeat
-        mock_file
+        mock_recon_module,  # New arg for position_reconciliation
+        mock_eod,  # New arg for eod_report
+        mock_contracts,  # New arg for contract_updater
+        mock_heartbeat,  # New arg for heartbeat
+        mock_file,
     ):
         """Simulate complete trading cycle: startup -> scan -> entry -> exit."""
         from Tradebot import create_bot
@@ -676,7 +678,7 @@ class TestBotEndToEnd:
         # Mock initial setup
         mock_socket.start_websocket.return_value = None
         mock_scanner.start_scanning.return_value = None
-        
+
         # Ensure background threads don't start
         mock_heartbeat.Heartbeat.return_value.start.return_value = None
         mock_contracts.run_scheduler.return_value = None
@@ -689,17 +691,17 @@ class TestBotEndToEnd:
 
         # Mock scanner signal
         mock_scanner.scan_for_signals.return_value = {
-            'type': 'BUY',
-            'instrument': 'CRUDEOIL',
-            'entry_price': 6000.0,
-            'stop_loss': 5980.0,
-            'targets': [6020.0, 6040.0, 6060.0]
+            "type": "BUY",
+            "instrument": "CRUDEOIL",
+            "entry_price": 6000.0,
+            "stop_loss": 5980.0,
+            "targets": [6020.0, 6040.0, 6060.0],
         }
 
         # Mock manager trade entry
         mock_manager.enter_position.return_value = {
-            'status': 'success',
-            'order_id': 'TEST_ORDER_123'
+            "status": "success",
+            "order_id": "TEST_ORDER_123",
         }
 
         # Mock manager position monitoring
@@ -710,6 +712,7 @@ class TestBotEndToEnd:
 
         # Simulate limited run (stop after 5 loops)
         call_count = 0
+
         def mock_sleep_side_effect(seconds):
             nonlocal call_count
             call_count += 1
@@ -736,20 +739,20 @@ class TestBotEndToEnd:
         from Tradebot import create_bot
 
         # Mock file operations
-        mocker.patch('builtins.open', mock_open(read_data=json.dumps(mock_creds)))
+        mocker.patch("builtins.open", mock_open(read_data=json.dumps(mock_creds)))
 
         # Mock components
-        mock_dhan = mocker.patch('manager.dhan')
-        mock_socket = mocker.patch('Tradebot.socket_handler')
-        mock_scanner = mocker.patch('Tradebot.scanner')
-        mock_manager = mocker.patch('Tradebot.manager')
+        mock_dhan = mocker.patch("manager.dhan")
+        mock_socket = mocker.patch("Tradebot.socket_handler")
+        mock_scanner = mocker.patch("Tradebot.scanner")
+        mock_manager = mocker.patch("Tradebot.manager")
 
         # Mock signal detection
         signal = {
-            'type': 'BUY',
-            'instrument': 'CRUDEOIL',
-            'entry_price': 6000.0,
-            'stop_loss': 5980.0
+            "type": "BUY",
+            "instrument": "CRUDEOIL",
+            "entry_price": 6000.0,
+            "stop_loss": 5980.0,
         }
         mock_scanner.scan_for_signals.return_value = signal
 
@@ -759,8 +762,8 @@ class TestBotEndToEnd:
 
         # Mock successful order placement
         mock_dhan.place_order.return_value = {
-            'status': 'success',
-            'data': {'orderId': 'ORDER123'}
+            "status": "success",
+            "data": {"orderId": "ORDER123"},
         }
 
         # Create bot and simulate signal processing
@@ -774,8 +777,8 @@ class TestBotEndToEnd:
             entry_result = mock_manager.enter_position(current_signal)
 
             # Verify signal was processed
-            assert current_signal['type'] == 'BUY'
-            assert current_signal['instrument'] == 'CRUDEOIL'
+            assert current_signal["type"] == "BUY"
+            assert current_signal["instrument"] == "CRUDEOIL"
 
             # Verify manager was called with signal
             mock_manager.enter_position.assert_called_once_with(current_signal)
@@ -785,20 +788,22 @@ class TestBotEndToEnd:
         from Tradebot import create_bot
 
         # Mock file operations
-        mocker.patch('builtins.open', mock_open(read_data=json.dumps(mock_creds)))
+        mocker.patch("builtins.open", mock_open(read_data=json.dumps(mock_creds)))
 
         # Mock components
-        mock_manager = mocker.patch('Tradebot.manager')
-        mock_socket = mocker.patch('Tradebot.socket_handler')
+        mock_manager = mocker.patch("Tradebot.manager")
+        mock_socket = mocker.patch("Tradebot.socket_handler")
 
         # Mock active position
-        mock_manager.get_active_positions.return_value = [{
-            'instrument': 'CRUDEOIL',
-            'entry_price': 6000.0,
-            'stop_loss': 5980.0,
-            'current_price': 6050.0,  # Profit above 2R target
-            'pnl': 200.0
-        }]
+        mock_manager.get_active_positions.return_value = [
+            {
+                "instrument": "CRUDEOIL",
+                "entry_price": 6000.0,
+                "stop_loss": 5980.0,
+                "current_price": 6050.0,  # Profit above 2R target
+                "pnl": 200.0,
+            }
+        ]
 
         # Mock price checks
         mock_socket.get_latest_ltp.return_value = 6050.0
@@ -814,8 +819,8 @@ class TestBotEndToEnd:
             position = active_positions[0]
 
             # Check if exit conditions met
-            if position['current_price'] >= position['entry_price'] + 40:  # 2R target
-                mock_manager.exit_position(position['instrument'])
+            if position["current_price"] >= position["entry_price"] + 40:  # 2R target
+                mock_manager.exit_position(position["instrument"])
 
         # Verify exit was triggered
-        mock_manager.exit_position.assert_called_once_with('CRUDEOIL')
+        mock_manager.exit_position.assert_called_once_with("CRUDEOIL")

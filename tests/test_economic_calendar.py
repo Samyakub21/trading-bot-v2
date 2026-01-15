@@ -11,14 +11,14 @@ from pathlib import Path
 from economic_calendar import (
     EconomicCalendar,
     should_pause_trading,
-    get_upcoming_events
+    get_upcoming_events,
 )
 
 
 class TestEconomicCalendar:
     """Test cases for economic calendar functionality."""
 
-    @patch('requests.get')
+    @patch("requests.get")
     def test_fetch_events_api_success(self, mock_get):
         """Test successful API fetch of economic events."""
         # Mock API response
@@ -31,14 +31,14 @@ class TestEconomicCalendar:
                 "impact": "High",
                 "country": "US",
                 "forecast": "2.5M",
-                "previous": "1.8M"
+                "previous": "1.8M",
             },
             {
                 "date": "2026-01-15T15:00:00+00:00",
                 "title": "Non-Farm Payrolls",
                 "impact": "High",
-                "country": "US"
-            }
+                "country": "US",
+            },
         ]
         mock_get.return_value = mock_response
 
@@ -51,7 +51,7 @@ class TestEconomicCalendar:
         assert events[1].name == "Non-Farm Payrolls"
         assert events[1].impact == "high"
 
-    @patch('requests.get')
+    @patch("requests.get")
     def test_fetch_events_api_failure(self, mock_get):
         """Test API failure fallback behavior."""
         # Mock API failure
@@ -62,9 +62,9 @@ class TestEconomicCalendar:
 
         assert events == []
 
-    @patch('json.load')
-    @patch('builtins.open', new_callable=mock_open)
-    @patch('pathlib.Path.exists')
+    @patch("json.load")
+    @patch("builtins.open", new_callable=mock_open)
+    @patch("pathlib.Path.exists")
     def test_load_cached_events(self, mock_exists, mock_file, mock_json_load):
         """Test loading events from cache file."""
         mock_exists.return_value = True
@@ -74,10 +74,10 @@ class TestEconomicCalendar:
                     "name": "Test Event",
                     "timestamp": "2026-01-15T14:30:00",
                     "impact": "high",
-                    "country": "US"
+                    "country": "US",
                 }
             ],
-            "last_update": datetime.now().isoformat()
+            "last_update": datetime.now().isoformat(),
         }
 
         calendar = EconomicCalendar()
@@ -87,17 +87,15 @@ class TestEconomicCalendar:
         assert len(calendar.events) == 1
         assert calendar.events[0].name == "Test Event"
 
-    @patch('builtins.open', new_callable=mock_open)
+    @patch("builtins.open", new_callable=mock_open)
     def test_save_events_to_cache(self, mock_file):
         """Test saving events to cache file."""
         calendar = EconomicCalendar()
         # Add a mock event
         from economic_calendar import EconomicEvent
+
         event = EconomicEvent(
-            name="Test Event",
-            timestamp=datetime.now(),
-            impact="high",
-            country="US"
+            name="Test Event", timestamp=datetime.now(), impact="high", country="US"
         )
         calendar.events = [event]
 
@@ -107,7 +105,8 @@ class TestEconomicCalendar:
         mock_file.assert_called_once()
         # Verify json.dump was called
         import json
-        with patch('json.dump') as mock_json_dump:
+
+        with patch("json.dump") as mock_json_dump:
             calendar.save_events_to_cache()
             mock_json_dump.assert_called_once()
 
@@ -120,7 +119,7 @@ class TestEconomicCalendar:
             name="Crude Oil Inventories",
             timestamp=datetime.now() + timedelta(hours=1),
             impact="high",
-            country="US"
+            country="US",
         )
 
         # Medium impact event
@@ -128,13 +127,13 @@ class TestEconomicCalendar:
             name="Some Medium Event",
             timestamp=datetime.now() + timedelta(hours=1),
             impact="medium",
-            country="US"
+            country="US",
         )
 
         assert high_event.is_high_impact() == True
         assert medium_event.is_high_impact() == False
 
-    @patch('economic_calendar.EconomicCalendar.get_active_events')
+    @patch("economic_calendar.EconomicCalendar.get_active_events")
     def test_should_pause_trading(self, mock_get_active):
         """Test trading pause logic."""
         # Mock active events
@@ -143,7 +142,7 @@ class TestEconomicCalendar:
         mock_event.name = "Crude Oil Inventories"
         mock_get_active.return_value = [mock_event]
 
-        with patch('economic_calendar.get_calendar') as mock_get_cal:
+        with patch("economic_calendar.get_calendar") as mock_get_cal:
             mock_calendar = MagicMock()
             mock_get_cal.return_value = mock_calendar
             mock_calendar.get_active_events.return_value = [mock_event]
@@ -153,13 +152,13 @@ class TestEconomicCalendar:
             assert pause == True
             assert "Crude Oil Inventories" in reason
 
-    @patch('economic_calendar.EconomicCalendar.get_upcoming_events')
+    @patch("economic_calendar.EconomicCalendar.get_upcoming_events")
     def test_get_upcoming_events(self, mock_get_upcoming):
         """Test getting upcoming events."""
         mock_events = [MagicMock(), MagicMock()]
         mock_get_upcoming.return_value = mock_events
 
-        with patch('economic_calendar.get_calendar') as mock_get_cal:
+        with patch("economic_calendar.get_calendar") as mock_get_cal:
             mock_calendar = MagicMock()
             mock_get_cal.return_value = mock_calendar
             mock_calendar.get_upcoming_events.return_value = mock_events

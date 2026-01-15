@@ -9,26 +9,28 @@ active_trade = {
     "initial_sl": 5980,  # 20 points risk
     "current_sl_level": 5980,
     "step_level": 0,
-    "order_id": "12345"
+    "order_id": "12345",
 }
 
 print(f"--- SIMULATION STARTED ---")
-print(f"Entry: {active_trade['entry_price']} | SL: {active_trade['initial_sl']} | Risk: 20 pts")
+print(
+    f"Entry: {active_trade['entry_price']} | SL: {active_trade['initial_sl']} | Risk: 20 pts"
+)
 print("-" * 50)
 
 # Simulate 50 minutes of price movement
 current_price = 6000
 for i in range(1, 51):
     # Randomly move price (Simulating volatility)
-    move = random.choice([-5, -2, 0, 2, 5, 8, 10]) 
+    move = random.choice([-5, -2, 0, 2, 5, 8, 10])
     current_price += move
-    
+
     # --- YOUR EXACT MANAGER LOGIC ---
     ltp = current_price
-    
+
     # 1. Calc Risk (R)
     risk_unit = abs(active_trade["entry_price"] - active_trade["initial_sl"])
-    
+
     # Calc R-Multiple (guard against zero risk_unit)
     if active_trade["type"] == "BUY":
         profit_points = ltp - active_trade["entry_price"]
@@ -40,8 +42,10 @@ for i in range(1, 51):
         r_multiple = 0.0
     else:
         r_multiple = profit_points / risk_unit
-    
-    print(f"Time: {i}m | Price: {ltp} | Profit: {profit_points} pts ({r_multiple:.1f}R) | SL: {active_trade['current_sl_level']}")
+
+    print(
+        f"Time: {i}m | Price: {ltp} | Profit: {profit_points} pts ({r_multiple:.1f}R) | SL: {active_trade['current_sl_level']}"
+    )
 
     # 2. STEP LADDER
     if r_multiple >= 5.0:
@@ -75,10 +79,10 @@ for i in range(1, 51):
             candidate = active_trade["entry_price"] - (lock_r * risk_unit)
             if candidate < active_trade["current_sl_level"]:
                 active_trade["current_sl_level"] = candidate
-        
+
     # CHECK IF SL HIT
     if ltp <= active_trade["current_sl_level"]:
         print(f">>> 🛑 SL HIT at {ltp}. Trade Closed.")
         break
-        
-    time.sleep(0.1) # Fast forward
+
+    time.sleep(0.1)  # Fast forward

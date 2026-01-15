@@ -14,14 +14,14 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 def mock_dhan_client():
     """Create mock Dhan client for API testing"""
     from unittest.mock import MagicMock
-    
+
     mock = MagicMock()
     mock.BUY = "BUY"
     mock.SELL = "SELL"
     mock.LIMIT = "LIMIT"
     mock.MARKET = "MARKET"
     mock.INTRADAY = "INTRADAY"
-    
+
     return mock
 
 
