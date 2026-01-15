@@ -24,35 +24,30 @@ jobs:
       run: |
         python -m pip install --upgrade pip setuptools wheel
         
-        # --- FIX: Switch to pandas-ta-openbb for Python 3.12/Numpy 2 Support ---
-        # 1. Remove the old pandas-ta requirement which is causing conflicts/404s
-        sed -i '/pandas-ta/d' requirements.txt
-        
-        # 2. Install pandas-ta-openbb from PyPI (Drop-in replacement compatible with Numpy 2)
-        pip install pandas-ta-openbb
-        
-        # 3. Install the rest of the project dependencies
+        # Install project dependencies from your updated requirements.txt
         pip install -r requirements.txt
         
-        # 4. Install testing tools
+        # Install testing and linting tools (not always in requirements.txt)
         pip install flake8 black mypy pytest pytest-asyncio pytest-cov
 
     - name: Lint with Black (Formatting)
       run: |
+        # Check if code is formatted correctly. Fails if it's not.
         black --check .
 
     - name: Lint with Flake8 (Syntax & Style)
       run: |
-        # Stop build on syntax errors
+        # Stop the build if there are Python syntax errors or undefined names
         flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
-        # Warnings for style (exit-zero)
+        # Exit-zero treats all errors as warnings.
         flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
 
     - name: Type Check with Mypy
       run: |
-        # Ignore missing imports to prevent failure on un-typed libraries
+        # Targeted type checking, ignoring missing imports for libraries without stubs
         mypy . --ignore-missing-imports || true
 
     - name: Run Tests
       run: |
+        # Run pytest with verbosity
         pytest tests/ -v
