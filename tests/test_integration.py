@@ -642,10 +642,14 @@ class TestErrorHandlingIntegration:
 # END-TO-END BOT SIMULATION
 # =============================================================================
 
-class TestBotEndToEnd(TestCase):
+class TestBotEndToEnd:
     """Comprehensive end-to-end simulation of the trading bot."""
 
-    @patch('builtins.open', mock_open(read_data=json.dumps(mock_creds)))
+    @patch('builtins.open', new_callable=mock_open, read_data='{"client_id": "test", "access_token": "test"}')
+    @patch('Tradebot.heartbeat')              # Mocks Heartbeat thread
+    @patch('Tradebot.contract_updater')       # Mocks Contract Updater thread
+    @patch('Tradebot.eod_report')             # Mocks EOD Report thread
+    @patch('Tradebot.position_reconciliation')# Mocks Reconciliation thread
     @patch('Tradebot.socket_handler')
     @patch('Tradebot.time.sleep')
     @patch('Tradebot.scanner')
@@ -654,32 +658,30 @@ class TestBotEndToEnd(TestCase):
     @patch('Tradebot.reconcile_on_startup')
     def test_full_trading_cycle_simulation(
         self,
-        mock_reconcile,
+        mock_reconcile_startup,
         mock_auto_update,
         mock_manager,
         mock_scanner,
         mock_sleep,
         mock_socket,
-        open_mock
+        mock_recon_module,   # New arg for position_reconciliation
+        mock_eod,            # New arg for eod_report
+        mock_contracts,      # New arg for contract_updater
+        mock_heartbeat,      # New arg for heartbeat
+        mock_file
     ):
         """Simulate complete trading cycle: startup -> scan -> entry -> exit."""
         from Tradebot import create_bot
 
-        # Mock file operations
-        mocker.patch('builtins.open', mock_open(read_data=json.dumps(mock_creds)))
-
-        # Mock components
-        mock_dhan = mocker.patch('Tradebot.dhan')
-        mock_socket = mocker.patch('Tradebot.socket_handler')
-        mock_sleep = mocker.patch('Tradebot.time.sleep')
-        mock_scanner = mocker.patch('Tradebot.scanner')
-        mock_manager = mocker.patch('Tradebot.manager')
-        mock_contract_updater = mocker.patch('Tradebot.contract_updater')
-        mock_reconciliation = mocker.patch('Tradebot.position_reconciliation')
-
         # Mock initial setup
         mock_socket.start_websocket.return_value = None
         mock_scanner.start_scanning.return_value = None
+        
+        # Ensure background threads don't start
+        mock_heartbeat.Heartbeat.return_value.start.return_value = None
+        mock_contracts.run_scheduler.return_value = None
+        mock_eod.run_scheduler.return_value = None
+        # (Add other start/run mocks if your specific implementation calls them differently)
 
         # Mock market data
         mock_socket.get_latest_ltp.return_value = 6000.0
@@ -706,31 +708,28 @@ class TestBotEndToEnd(TestCase):
         # Create bot instance
         bot = create_bot()
 
-        # Simulate limited run (instead of infinite loop)
+        # Simulate limited run (stop after 5 loops)
         call_count = 0
         def mock_sleep_side_effect(seconds):
             nonlocal call_count
             call_count += 1
-            if call_count >= 5:  # Stop after 5 sleep calls
+            if call_count >= 5:
                 raise KeyboardInterrupt("Test stop")
 
         mock_sleep.side_effect = mock_sleep_side_effect
 
-        # Run the bot (should stop after a few cycles)
+        # Run the bot
         with pytest.raises(KeyboardInterrupt):
             bot.start()
 
         # Verify startup sequence
         mock_auto_update.assert_called_once()
-        mock_reconcile.assert_called_once()
+        mock_reconcile_startup.assert_called_once()
         mock_socket.start_websocket.assert_called_once()
         mock_scanner.start_scanning.assert_called_once()
 
         # Verify scanning was attempted
         assert mock_scanner.scan_for_signals.call_count >= 1
-
-        # Verify sleep was called multiple times
-        assert mock_sleep.call_count >= 5
 
     def test_signal_to_trade_execution_flow(self, mocker):
         """Test flow from signal detection to trade execution."""
@@ -740,7 +739,7 @@ class TestBotEndToEnd(TestCase):
         mocker.patch('builtins.open', mock_open(read_data=json.dumps(mock_creds)))
 
         # Mock components
-        mock_dhan = mocker.patch('Tradebot.dhan')
+        mock_dhan = mocker.patch('manager.dhan')
         mock_socket = mocker.patch('Tradebot.socket_handler')
         mock_scanner = mocker.patch('Tradebot.scanner')
         mock_manager = mocker.patch('Tradebot.manager')
@@ -797,12 +796,12 @@ class TestBotEndToEnd(TestCase):
             'instrument': 'CRUDEOIL',
             'entry_price': 6000.0,
             'stop_loss': 5980.0,
-            'current_price': 6020.0,  # Profit
+            'current_price': 6050.0,  # Profit above 2R target
             'pnl': 200.0
         }]
 
         # Mock price checks
-        mock_socket.get_latest_ltp.return_value = 6020.0
+        mock_socket.get_latest_ltp.return_value = 6050.0
         mock_socket.get_option_ltp.return_value = 170.0  # Profit exit
 
         # Create bot
