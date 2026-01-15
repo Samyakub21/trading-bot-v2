@@ -2,12 +2,12 @@
 # Trading Bot Dependencies
 # =============================================================================
 
-# Core Dependencies - Dhan V2 API requires dhanhq >= 2.0.0
+# Core Dependencies
 dhanhq>=2.0.0
 pandas>=2.0.0
-#pandas-ta>=0.3.14b
-git+https://github.com/twopirllc/pandas-ta.git@development#egg=pandas-ta
-numpy>=1.24.0
+# pandas-ta>=0.3.14b  <-- REMOVED (Broken/Unmaintained)
+pandas-ta-openbb      # <-- ADDED (Maintained fork, supports Python 3.12)
+numpy<2.0.0           # <-- ADDED (Safety pin for compatibility)
 
 # Async Support
 aiohttp>=3.9.0
@@ -25,7 +25,7 @@ pytest-cov>=4.1.0
 streamlit>=1.28.0
 plotly>=5.18.0
 
-# Chart Generation for Rich Notifications
+# Chart Generation
 matplotlib>=3.7.0
 mplfinance>=0.12.10b0
 
@@ -47,4 +47,4 @@ python-dateutil>=2.8.2
 # Type checking (optional)
 # mypy>=1.7.0
 # types-requests>=2.31.0
-git+https://github.com/twopirllc/pandas-ta.git@development#egg=pandas-ta
+# types-python-dateutil>=2.8.2
