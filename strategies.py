@@ -17,7 +17,7 @@ Usage:
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional, Tuple, cast
 import pandas as pd
-import pandas_ta as ta
+import pandas_ta_classic as ta
 import logging
 
 

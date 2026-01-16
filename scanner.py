@@ -14,7 +14,7 @@ import threading
 import requests
 import requests
 import pandas as pd
-import pandas_ta as ta
+import pandas_ta_classic as ta
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple, cast
 from dhanhq import dhanhq

@@ -7,6 +7,7 @@ dhanhq>=2.0.0
 pandas>=2.2.0
 # pandas-ta>=0.3.14b  <-- REMOVED (Broken/Unmaintained)
 pandas-ta-classic      # <-- Maintained fork, fixes Python 3.12 matplotlib crash
+numpy>=1.26.0,<2.0.0
 
 # Async Support
 aiohttp>=3.9.0
