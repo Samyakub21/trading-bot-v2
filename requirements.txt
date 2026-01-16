@@ -7,7 +7,7 @@ dhanhq>=2.0.0
 pandas>=2.0.0
 # pandas-ta>=0.3.14b  <-- REMOVED (Broken/Unmaintained)
 # pandas-ta-openbb      # <-- ADDED (Maintained fork, supports Python 3.12)
-pandas-ta @ git+https://github.com/twopirllc/pandas-ta.git@develop  # <-- Use develop branch with Python 3.12 fix
+pandas-ta @ git+https://github.com/twopirllc/pandas-ta.git@development  # <-- Use develop branch with Python 3.12 fix
 numpy<2.0.0           # <-- ADDED (Safety pin for compatibility)
 
 # Async Support
