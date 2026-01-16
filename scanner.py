@@ -1149,6 +1149,7 @@ def execute_trade_entry(
 
 def run_scanner(active_trade: Dict[str, Any], active_instrument: str) -> None:
     """Main scanner loop"""
+    global _last_calendar_log
     logging.info(
         ">>> Scanner Started (Multi-Instrument Mode)"
         if MULTI_SCAN_ENABLED
