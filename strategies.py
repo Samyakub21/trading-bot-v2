@@ -17,8 +17,19 @@ Usage:
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional, Tuple, cast
 import pandas as pd
-import pandas_ta as ta
+from ta.trend import EMAIndicator
+from ta.momentum import RSIIndicator
+from ta.volatility import BollingerBands
 import logging
+
+
+def calculate_anchored_vwap(df: pd.DataFrame) -> pd.Series:
+    """Calculate Intraday VWAP anchored to the start of each day."""
+    typical_price = (df['high'] + df['low'] + df['close']) / 3
+    vp = typical_price * df['volume']
+    cumulative_vp = vp.groupby(df.index.date).cumsum()
+    cumulative_vol = df['volume'].groupby(df.index.date).cumsum()
+    return cumulative_vp / cumulative_vol
 
 
 # =============================================================================
@@ -120,15 +131,18 @@ class TrendFollowingStrategy(Strategy):
             # Get parameters
             rsi_bullish = self.get_param("rsi_bullish_threshold", 60)
             rsi_bearish = self.get_param("rsi_bearish_threshold", 40)
-            rsi_length = self.get_param("rsi_length", 14)
-            ema_length = self.get_param("ema_length", 50)
+            rsi_len = self.get_param("rsi_length", 14)
+            ema_len = self.get_param("ema_length", 50)
             volume_mult = self.get_param("volume_multiplier", 1.2)
             vol_window = self.get_param("volume_window", 20)
 
             # Calculate indicators
-            df_60["EMA"] = ta.ema(df_60["close"], length=ema_length)
-            df_15.ta.vwap(append=True)
-            df_15["RSI"] = ta.rsi(df_15["close"], length=rsi_length)
+            # 1. EMA on 60min
+            df_60["EMA"] = EMAIndicator(close=df_60["close"], window=ema_len).ema_indicator()
+            # 2. RSI on 15min
+            df_15["RSI"] = RSIIndicator(close=df_15["close"], window=rsi_len).rsi()
+            # 3. VWAP (Custom Anchored)
+            df_15["VWAP_D"] = calculate_anchored_vwap(df_15)
             df_15["vol_avg"] = df_15["volume"].rolling(window=vol_window).mean()
 
             trend = df_60.iloc[-2]
@@ -239,21 +253,19 @@ class MeanReversionStrategy(Strategy):
             # Get parameters
             rsi_oversold = self.get_param("rsi_oversold", 30)
             rsi_overbought = self.get_param("rsi_overbought", 70)
-            rsi_length = self.get_param("rsi_length", 14)
-            bb_length = self.get_param("bb_length", 20)
+            rsi_len = self.get_param("rsi_length", 14)
+            bb_len = self.get_param("bb_length", 20)
             bb_std = self.get_param("bb_std", 2.0)
             band_threshold = self.get_param("band_threshold", 0.02)
             volume_mult = self.get_param("volume_multiplier", 1.0)
 
-            # Calculate indicators on 15min timeframe
-            df_15["RSI"] = ta.rsi(df_15["close"], length=rsi_length)
-
+            # RSI
+            df_15["RSI"] = RSIIndicator(close=df_15["close"], window=rsi_len).rsi()
             # Bollinger Bands
-            bbands = ta.bbands(df_15["close"], length=bb_length, std=bb_std)
-            if bbands is not None:
-                df_15["BB_upper"] = bbands[f"BBU_{bb_length}_{bb_std}"]
-                df_15["BB_lower"] = bbands[f"BBL_{bb_length}_{bb_std}"]
-                df_15["BB_mid"] = bbands[f"BBM_{bb_length}_{bb_std}"]
+            bb_indicator = BollingerBands(close=df_15["close"], window=bb_len, window_dev=bb_std)
+            df_15["BB_upper"] = bb_indicator.bollinger_hband()
+            df_15["BB_lower"] = bb_indicator.bollinger_lband()
+            df_15["BB_mid"] = bb_indicator.bollinger_mavg()
 
             df_15["vol_avg"] = df_15["volume"].rolling(window=20).mean()
 
@@ -361,11 +373,11 @@ class MomentumBreakoutStrategy(Strategy):
             breakout_pct = self.get_param("breakout_threshold", 0.005)
             rsi_min_bull = self.get_param("rsi_min_bullish", 55)
             rsi_max_bear = self.get_param("rsi_max_bearish", 45)
-            rsi_length = self.get_param("rsi_length", 14)
+            rsi_len = self.get_param("rsi_length", 14)
             volume_mult = self.get_param("volume_multiplier", 1.5)
 
             # Calculate indicators
-            df_15["RSI"] = ta.rsi(df_15["close"], length=rsi_length)
+            df_15["RSI"] = RSIIndicator(close=df_15["close"], window=rsi_len).rsi()
             df_15["vol_avg"] = df_15["volume"].rolling(window=20).mean()
 
             # Calculate recent high/low

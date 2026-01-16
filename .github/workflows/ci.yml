@@ -14,10 +14,10 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Set up Python 3.10 (DhanHQ Safe)
+    - name: Set up Python 3.12 (DhanHQ Safe)
       uses: actions/setup-python@v5
       with:
-        python-version: "3.10"
+        python-version: "3.12"
         cache: "pip"
 
     - name: Upgrade pip tooling
@@ -35,10 +35,10 @@ jobs:
     - name: Verify core dependency versions
       run: |
         python - <<EOF
-        import numpy, pandas, pandas_ta
+        import numpy, pandas, ta
         print("NumPy:", numpy.__version__)
         print("Pandas:", pandas.__version__)
-        print("pandas-ta:", pandas_ta.version)
+        print("ta: imported")
         EOF
 
     - name: Lint with Black

@@ -14,7 +14,8 @@ import threading
 import requests
 import requests
 import pandas as pd
-import pandas_ta as ta
+from ta.trend import EMAIndicator
+from ta.momentum import RSIIndicator
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple, cast
 from dhanhq import dhanhq
@@ -259,9 +260,14 @@ def analyze_instrument_signal(
         rsi_bearish = inst_params.get("rsi_bearish_threshold", RSI_BEARISH_THRESHOLD)
         volume_mult = inst_params.get("volume_multiplier", VOLUME_MULTIPLIER)
 
-        df_60["EMA_50"] = ta.ema(df_60["close"], length=50)
-        df_15.ta.vwap(append=True)
-        df_15["RSI"] = ta.rsi(df_15["close"], length=14)
+        # EMA 50
+        df_60["EMA_50"] = EMAIndicator(close=df_60["close"], window=50).ema_indicator()
+        # Anchored VWAP
+        df_15["tp"] = (df_15["high"] + df_15["low"] + df_15["close"]) / 3
+        df_15["vp"] = df_15["tp"] * df_15["volume"]
+        df_15["VWAP_D"] = df_15.groupby(df_15.index.date)["vp"].cumsum() / df_15.groupby(df_15.index.date)["volume"].cumsum()
+        # RSI
+        df_15["RSI"] = RSIIndicator(close=df_15["close"], window=14).rsi()
         df_15["vol_avg"] = df_15["volume"].rolling(window=20).mean()
 
         trend = df_60.iloc[-2]
@@ -736,9 +742,13 @@ def analyze_instrument_signal(
         volume_mult = inst_params.get("volume_multiplier", VOLUME_MULTIPLIER)
 
         # Calculate indicators
-        df_60["EMA_50"] = ta.ema(df_60["close"], length=50)
-        df_15.ta.vwap(append=True)
-        df_15["RSI"] = ta.rsi(df_15["close"], length=14)
+        df_60["EMA_50"] = EMAIndicator(close=df_60["close"], window=50).ema_indicator()
+        # Anchored VWAP
+        df_15["tp"] = (df_15["high"] + df_15["low"] + df_15["close"]) / 3
+        df_15["vp"] = df_15["tp"] * df_15["volume"]
+        df_15["VWAP_D"] = df_15.groupby(df_15.index.date)["vp"].cumsum() / df_15.groupby(df_15.index.date)["volume"].cumsum()
+        # RSI
+        df_15["RSI"] = RSIIndicator(close=df_15["close"], window=14).rsi()
         df_15["vol_avg"] = df_15["volume"].rolling(window=20).mean()
 
         trend = df_60.iloc[-2]
