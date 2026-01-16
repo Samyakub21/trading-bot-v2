@@ -7,6 +7,7 @@ Loads trading parameters from trading_config.json or environment variables
 import os
 import json
 import logging
+import logging
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -58,6 +59,7 @@ DEFAULT_TRADING_CONFIG = {
         "BANKNIFTY": 2,
     },
     # Per-Instrument Custom Settings (overrides global settings)
+    "PER_INSTRUMENT_SETTINGS": {},
     "PER_INSTRUMENT_SETTINGS": {},
     # State Files (fallback when database is disabled)
     "STATE_FILE": str(DATA_DIR / "trade_state_active.json"),
@@ -113,6 +115,10 @@ class Config:
                 "⚠️ MISSING CREDENTIALS! The bot will fail to connect, but tests can run.\n"
                 "Please set DHAN_CLIENT_ID, DHAN_ACCESS_TOKEN, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID."
             )
+            logging.warning(
+                "⚠️ MISSING CREDENTIALS! The bot will fail to connect, but tests can run.\n"
+                "Please set DHAN_CLIENT_ID, DHAN_ACCESS_TOKEN, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID."
+            )
 
         # --- Trading Configuration ---
         self._trading_config = self._load_trading_config()
@@ -137,6 +143,7 @@ class Config:
             print(f"Warning: Could not load credentials.json: {e}")
 
     def _load_trading_config(self) -> Dict[str, Any]:
+        """Load trading configuration"""
         """Load trading configuration"""
         config = DEFAULT_TRADING_CONFIG.copy()
 
@@ -175,6 +182,7 @@ class Config:
     def get_trading_param(self, key: str, default: Any = None) -> Any:
         return self._trading_config.get(key, default)
 
+    # --- Properties ---
     # --- Properties ---
     @property
     def MAX_DAILY_LOSS(self) -> float:

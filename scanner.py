@@ -12,6 +12,7 @@ import logging
 import time
 import threading
 import requests
+import requests
 import pandas as pd
 import pandas_ta as ta
 from datetime import datetime, timedelta
@@ -49,6 +50,7 @@ from state_stores import get_signal_tracker
 _DATA_CACHE: Dict[str, pd.DataFrame] = {}
 
 # =============================================================================
+# STRATEGY PATTERN SUPPORT
 # STRATEGY PATTERN SUPPORT
 # =============================================================================
 USE_STRATEGY_PATTERN = True
@@ -994,6 +996,7 @@ def get_atm_option(
     underlying: str = "",
 ) -> Optional[str]:
     # Fix float/int types
+    # Fix float/int types
     atm_strike = round(current_price / strike_step) * strike_step
     target = "CE" if transaction_type == "BUY" else "PE"
     target_key = "ce" if target == "CE" else "pe"
@@ -1036,6 +1039,7 @@ def get_atm_option(
         return None
     except Exception as e:
         logging.error(f"Error in get_atm_option: {e}")
+        logging.error(f"Error in get_atm_option: {e}")
         return None
 
 
@@ -1075,6 +1079,9 @@ def check_margin_available(
                     required = option_ltp * lot_size * 1.05
                     if available_balance >= required:
                         return True, f"Margin OK: {available_balance}"
+                    required = option_ltp * lot_size * 1.05
+                    if available_balance >= required:
+                        return True, f"Margin OK: {available_balance}"
                     else:
                         return False, f"Insufficient: {available_balance} < {required}"
         except Exception:
@@ -1083,6 +1090,7 @@ def check_margin_available(
         # Fallback logic
         return True, "Margin check skipped (fallback)"
     except Exception as e:
+        return True, f"Margin check error: {e}"
         return True, f"Margin check error: {e}"
 
 

@@ -238,12 +238,10 @@ def close_trade(
     market_feed = socket_handler.get_market_feed()
     if market_feed and active_trade.get("option_id"):
         inst = INSTRUMENTS.get(trade_instrument, {})
-        # FIX: Ensure exchange_segment_int is an integer
         exchange_segment_int = int(inst.get("exchange_segment_int", 5))
-        # FIX: Ensure option_id is passed correctly (usually str or int)
-        option_id = active_trade["option_id"]
-
-        socket_handler.unsubscribe_option(market_feed, option_id, exchange_segment_int)
+        socket_handler.unsubscribe_option(
+            market_feed, active_trade["option_id"], exchange_segment_int
+        )
 
     # Reset option LTP
     socket_handler.reset_option_ltp()
@@ -547,7 +545,7 @@ def run_manager(active_trade: Dict[str, Any], active_instrument: str) -> None:
                 continue
 
             # Trailing Steps
-            lock_r = 0.0
+            lock_r = 0
             msg = ""
             trade_lock = scanner.get_trade_lock()
 

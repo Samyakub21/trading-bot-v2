@@ -368,10 +368,16 @@ class TradingBot:
             for inst_key in get_instruments_to_scan():
                 # FIX: Explicit cast to str
                 market_open, market_msg = is_instrument_market_open(str(inst_key))
+                # FIX: Explicit cast to str
+                market_open, market_msg = is_instrument_market_open(str(inst_key))
                 status_icon = "✅" if market_open else "⏸️"
                 logging.info(f"   {status_icon} {inst_key}: {market_msg}")
         else:
             inst = INSTRUMENTS[self.active_instrument]
+            # FIX: Explicit cast to str
+            start_str = str(inst.get("market_start", "09:00"))
+            end_str = str(inst.get("market_end", "23:30"))
+            market_open, market_msg = is_market_open(start_str, end_str)
             # FIX: Explicit cast to str
             start_str = str(inst.get("market_start", "09:00"))
             end_str = str(inst.get("market_end", "23:30"))
