@@ -25,10 +25,10 @@ import logging
 
 def calculate_anchored_vwap(df: pd.DataFrame) -> pd.Series:
     """Calculate Intraday VWAP anchored to the start of each day."""
-    typical_price = (df['high'] + df['low'] + df['close']) / 3
-    vp = typical_price * df['volume']
+    typical_price = (df["high"] + df["low"] + df["close"]) / 3
+    vp = typical_price * df["volume"]
     cumulative_vp = vp.groupby(df.index.date).cumsum()
-    cumulative_vol = df['volume'].groupby(df.index.date).cumsum()
+    cumulative_vol = df["volume"].groupby(df.index.date).cumsum()
     return cumulative_vp / cumulative_vol
 
 
@@ -138,7 +138,9 @@ class TrendFollowingStrategy(Strategy):
 
             # Calculate indicators
             # 1. EMA on 60min
-            df_60["EMA"] = EMAIndicator(close=df_60["close"], window=ema_len).ema_indicator()
+            df_60["EMA"] = EMAIndicator(
+                close=df_60["close"], window=ema_len
+            ).ema_indicator()
             # 2. RSI on 15min
             df_15["RSI"] = RSIIndicator(close=df_15["close"], window=rsi_len).rsi()
             # 3. VWAP (Custom Anchored)
@@ -262,7 +264,9 @@ class MeanReversionStrategy(Strategy):
             # RSI
             df_15["RSI"] = RSIIndicator(close=df_15["close"], window=rsi_len).rsi()
             # Bollinger Bands
-            bb_indicator = BollingerBands(close=df_15["close"], window=bb_len, window_dev=bb_std)
+            bb_indicator = BollingerBands(
+                close=df_15["close"], window=bb_len, window_dev=bb_std
+            )
             df_15["BB_upper"] = bb_indicator.bollinger_hband()
             df_15["BB_lower"] = bb_indicator.bollinger_lband()
             df_15["BB_mid"] = bb_indicator.bollinger_mavg()

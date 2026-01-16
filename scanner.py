@@ -265,7 +265,10 @@ def analyze_instrument_signal(
         # Anchored VWAP
         df_15["tp"] = (df_15["high"] + df_15["low"] + df_15["close"]) / 3
         df_15["vp"] = df_15["tp"] * df_15["volume"]
-        df_15["VWAP_D"] = df_15.groupby(df_15.index.date)["vp"].cumsum() / df_15.groupby(df_15.index.date)["volume"].cumsum()
+        df_15["VWAP_D"] = (
+            df_15.groupby(df_15.index.date)["vp"].cumsum()
+            / df_15.groupby(df_15.index.date)["volume"].cumsum()
+        )
         # RSI
         df_15["RSI"] = RSIIndicator(close=df_15["close"], window=14).rsi()
         df_15["vol_avg"] = df_15["volume"].rolling(window=20).mean()
@@ -746,7 +749,10 @@ def analyze_instrument_signal(
         # Anchored VWAP
         df_15["tp"] = (df_15["high"] + df_15["low"] + df_15["close"]) / 3
         df_15["vp"] = df_15["tp"] * df_15["volume"]
-        df_15["VWAP_D"] = df_15.groupby(df_15.index.date)["vp"].cumsum() / df_15.groupby(df_15.index.date)["volume"].cumsum()
+        df_15["VWAP_D"] = (
+            df_15.groupby(df_15.index.date)["vp"].cumsum()
+            / df_15.groupby(df_15.index.date)["volume"].cumsum()
+        )
         # RSI
         df_15["RSI"] = RSIIndicator(close=df_15["close"], window=14).rsi()
         df_15["vol_avg"] = df_15["volume"].rolling(window=20).mean()
