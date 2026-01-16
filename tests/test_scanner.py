@@ -271,6 +271,16 @@ class TestCheckMarginAvailable:
             "status": "success",
             "data": {"totalMargin": 10000},
         }
+        
+        # Mock quote data (LTP) - ADDED THIS
+        mock_dhan.quote_data.return_value = {
+            "status": "success",
+            "data": {
+                "data": {
+                    "12345": {"last_price": 100.0}
+                }
+            }
+        }
 
         ok, msg = check_margin_available("12345", "MCX_COMM", 10)
         assert ok == True
@@ -286,6 +296,16 @@ class TestCheckMarginAvailable:
         mock_dhan.margin_calculator.return_value = {
             "status": "success",
             "data": {"totalMargin": 10000},
+        }
+        
+        # Mock quote data (High LTP) - ADDED THIS
+        mock_dhan.quote_data.return_value = {
+            "status": "success",
+            "data": {
+                "data": {
+                    "12345": {"last_price": 200.0}
+                }
+            }
         }
 
         ok, msg = check_margin_available("12345", "MCX_COMM", 10)
