@@ -30,7 +30,9 @@ for i in range(1, 51):
     ltp = current_price
 
     # 1. Calc Risk (R)
-    risk_unit = abs(cast(int, active_trade["entry_price"]) - cast(int, active_trade["initial_sl"]))
+    risk_unit = abs(
+        cast(int, active_trade["entry_price"]) - cast(int, active_trade["initial_sl"])
+    )
 
     # Calc R-Multiple (guard against zero risk_unit)
     if active_trade["type"] == "BUY":

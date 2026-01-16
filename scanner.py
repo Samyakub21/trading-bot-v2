@@ -133,7 +133,9 @@ def get_instrument_data(
             assert instrument_key is not None
             inst = cast(Dict[str, Any], INSTRUMENTS[instrument_key])
             future_id = cast(Optional[str], inst.get("future_id", ""))
-            exchange_segment_str = cast(Optional[str], inst.get("exchange_segment_str", ""))
+            exchange_segment_str = cast(
+                Optional[str], inst.get("exchange_segment_str", "")
+            )
             instrument_type = cast(str, inst.get("instrument_type", "FUTCOM"))
             log_context = instrument_key
             cache_key = instrument_key
@@ -308,8 +310,12 @@ def analyze_instrument_signal(
         try:
             # Get instrument-specific strategy
             inst_config = cast(Dict[str, Any], INSTRUMENTS.get(instrument_key, {}))
-            strategy_name = cast(Optional[str], inst_config.get("strategy"))  # None uses default
-            strategy_params = cast(Dict[str, Any], inst_config.get("strategy_params", {}))
+            strategy_name = cast(
+                Optional[str], inst_config.get("strategy")
+            )  # None uses default
+            strategy_params = cast(
+                Dict[str, Any], inst_config.get("strategy_params", {})
+            )
 
             strategy = get_strategy(instrument_key, strategy_name, strategy_params)
             signal_info = strategy.analyze(df_15.copy(), df_60.copy())
@@ -1286,7 +1292,9 @@ def run_scanner(active_trade: Dict[str, Any], active_instrument: str) -> None:
                         if opt_id:
                             # Check margin
                             margin_ok, margin_msg = check_margin_available(
-                                opt_id, cast(str, inst["exchange_segment_str"]), cast(int, inst["lot_size"])
+                                opt_id,
+                                cast(str, inst["exchange_segment_str"]),
+                                cast(int, inst["lot_size"]),
                             )
 
                             if margin_ok:
@@ -1356,10 +1364,7 @@ def run_scanner(active_trade: Dict[str, Any], active_instrument: str) -> None:
                     # Log upcoming events periodically (once per hour)
                     if (
                         _last_calendar_log is None
-                        or (
-                            datetime.now() - _last_calendar_log
-                        ).total_seconds()
-                        > 3600
+                        or (datetime.now() - _last_calendar_log).total_seconds() > 3600
                     ):
                         upcoming = _economic_calendar.get_upcoming_events(hours_ahead=4)
                         if upcoming:
@@ -1438,7 +1443,9 @@ def run_scanner(active_trade: Dict[str, Any], active_instrument: str) -> None:
                             continue
 
                         margin_ok, margin_msg = check_margin_available(
-                            opt_id, cast(str, inst["exchange_segment_str"]), cast(int, inst["lot_size"])
+                            opt_id,
+                            cast(str, inst["exchange_segment_str"]),
+                            cast(int, inst["lot_size"]),
                         )
                         if not margin_ok:
                             target_type = "CE" if signal == "BUY" else "PE"
@@ -1492,8 +1499,8 @@ def run_scanner(active_trade: Dict[str, Any], active_instrument: str) -> None:
                     )
 
                     if df_15 is not None and df_60 is not None:
-                        signal_data: Optional[Dict[str, Any]] = analyze_instrument_signal(
-                            active_instrument, df_15, df_60
+                        signal_data: Optional[Dict[str, Any]] = (
+                            analyze_instrument_signal(active_instrument, df_15, df_60)
                         )
 
                         if signal_data is not None:

@@ -285,7 +285,9 @@ async def scan_all_instruments_async() -> List[Dict[str, Any]]:
             logging.error(f"Fetch exception: {fetch_result}")
             continue
 
-        fetch_result = cast(Tuple[str, Optional[pd.DataFrame], Optional[pd.DataFrame]], fetch_result)
+        fetch_result = cast(
+            Tuple[str, Optional[pd.DataFrame], Optional[pd.DataFrame]], fetch_result
+        )
         inst_key, df_15, df_60 = fetch_result
         if df_15 is None or df_60 is None:
             logging.debug(f"   ❌ {inst_key}: No data available")
@@ -305,7 +307,9 @@ async def scan_all_instruments_async() -> List[Dict[str, Any]]:
         analysis_result = cast(Optional[Dict[str, Any]], analysis_result)
         if analysis_result is not None:
             signals_found.append(analysis_result)
-            signal_type = "📈 BULLISH" if analysis_result["signal"] == "BUY" else "📉 BEARISH"
+            signal_type = (
+                "📈 BULLISH" if analysis_result["signal"] == "BUY" else "📉 BEARISH"
+            )
             logging.info(
                 f"   ✅ {analysis_result['instrument']}: {signal_type} | RSI: {analysis_result['rsi']:.1f} | Strength: {analysis_result['signal_strength']:.1f}"
             )
@@ -468,7 +472,9 @@ async def fetch_multiple_option_chains(
     results = await asyncio.gather(*tasks, return_exceptions=True)
 
     return {
-        inst_key: cast(Optional[Dict], result) if not isinstance(result, Exception) else None
+        inst_key: (
+            cast(Optional[Dict], result) if not isinstance(result, Exception) else None
+        )
         for inst_key, result in zip(instruments, results)
     }
 

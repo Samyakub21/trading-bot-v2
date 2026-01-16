@@ -291,7 +291,9 @@ def _plot_emas(ax, df: pd.DataFrame) -> None:
 
         if not ema_cols:
             # Calculate common EMAs if not present
-            for period, color in zip([9, 21, 50], cast(list[str], CHART_STYLE["ema_colors"])):
+            for period, color in zip(
+                [9, 21, 50], cast(list[str], CHART_STYLE["ema_colors"])
+            ):
                 if len(df) >= period:
                     ema = df["close"].ewm(span=period, adjust=False).mean()
                     ax.plot(
@@ -304,7 +306,9 @@ def _plot_emas(ax, df: pd.DataFrame) -> None:
                     )
         else:
             for i, col in enumerate(ema_cols[:3]):
-                color = cast(list[str], CHART_STYLE["ema_colors"])[i % len(cast(list[str], CHART_STYLE["ema_colors"]))]
+                color = cast(list[str], CHART_STYLE["ema_colors"])[
+                    i % len(cast(list[str], CHART_STYLE["ema_colors"]))
+                ]
                 ax.plot(  # type: ignore[index]
                     df.index,
                     df[col],

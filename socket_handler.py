@@ -48,7 +48,11 @@ def get_all_instrument_subscriptions(
     for inst_key in instruments_to_scan:
         inst = INSTRUMENTS[inst_key]
         subscriptions.append(
-            (cast(int, inst["exchange_segment_int"]), str(inst["future_id"]), marketfeed.Ticker)
+            (
+                cast(int, inst["exchange_segment_int"]),
+                str(inst["future_id"]),
+                marketfeed.Ticker,
+            )
         )
 
     return subscriptions

@@ -238,7 +238,10 @@ def reconcile_positions(active_trade: Dict[str, Any]) -> ReconciliationResult:
         for pos in broker_positions:
             # Check if it's an options position on one of our instruments
             for inst_key, inst_config in INSTRUMENTS.items():
-                if cast(str, inst_config.get("exchange_segment_str")) in pos.exchange_segment:
+                if (
+                    cast(str, inst_config.get("exchange_segment_str"))
+                    in pos.exchange_segment
+                ):
                     our_positions.append(pos)
                     break
 

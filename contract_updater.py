@@ -628,7 +628,9 @@ if __name__ == "__main__":
 
         inst = INSTRUMENTS.get(args.show.upper())  # type: ignore
         if inst:
-            shown_config: Optional[Dict[str, Any]] = get_updated_instrument_config(args.show.upper(), cast(Dict[str, Any], inst))
+            shown_config: Optional[Dict[str, Any]] = get_updated_instrument_config(
+                args.show.upper(), cast(Dict[str, Any], inst)
+            )
             if shown_config:
                 print(f"\n📊 {args.show.upper()} Configuration:")
                 for key, value in shown_config.items():

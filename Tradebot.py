@@ -318,7 +318,9 @@ class TradingBot:
                 f"⏰ Market Hours: {inst['market_start']} - {inst['market_end']}"
             )
             logging.info(f"🚫 No New Trades After: {inst['no_new_trade_after']}")
-            market_end_hour, market_end_min = map(int, str(inst["market_end"]).split(":"))
+            market_end_hour, market_end_min = map(
+                int, str(inst["market_end"]).split(":")
+            )
             sq_min = market_end_min - self.config.auto_square_off_buffer
             sq_hour = market_end_hour
             if sq_min < 0:

@@ -394,7 +394,9 @@ def run_manager(active_trade: Dict[str, Any], active_instrument: str) -> None:
                     exit_response, "EXIT-AUTO-SQUAREOFF", symbol_name=option_name
                 )
                 exit_price = (
-                    exit_details.get("avg_price", opt_ltp) if exit_details and exit_success else opt_ltp
+                    exit_details.get("avg_price", opt_ltp)
+                    if exit_details and exit_success
+                    else opt_ltp
                 )
 
                 close_trade(
@@ -470,7 +472,11 @@ def run_manager(active_trade: Dict[str, Any], active_instrument: str) -> None:
                 )
 
                 if exit_success:
-                    exit_price = exit_details.get("avg_price", opt_ltp) if exit_details else opt_ltp
+                    exit_price = (
+                        exit_details.get("avg_price", opt_ltp)
+                        if exit_details
+                        else opt_ltp
+                    )
                 else:
                     exit_price = opt_ltp
                     logging.warning(
@@ -530,7 +536,9 @@ def run_manager(active_trade: Dict[str, Any], active_instrument: str) -> None:
                     exit_response, "EXIT-TARGET", symbol_name=option_name
                 )
                 exit_price = (
-                    exit_details.get("avg_price", opt_ltp) if exit_details and exit_success else opt_ltp
+                    exit_details.get("avg_price", opt_ltp)
+                    if exit_details and exit_success
+                    else opt_ltp
                 )
 
                 close_trade("1:5 TARGET HIT", ltp, exit_price, active_trade)
@@ -690,7 +698,7 @@ def place_exit_order(active_trade: Dict[str, Any], exit_reason: str = "MANUAL") 
     )
 
     if exit_success:
-        exit_price = (exit_details.get("avg_price", opt_ltp) if exit_details else opt_ltp)
+        exit_price = exit_details.get("avg_price", opt_ltp) if exit_details else opt_ltp
         close_trade(exit_reason, latest_ltp, exit_price, active_trade)
         return True
     else:
