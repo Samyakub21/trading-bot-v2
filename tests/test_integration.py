@@ -643,7 +643,11 @@ class TestErrorHandlingIntegration:
 class TestBotEndToEnd:
     """Comprehensive end-to-end simulation of the trading bot."""
 
-    @patch("builtins.open", new_callable=mock_open, read_data='{"client_id": "test", "access_token": "test"}')
+    @patch(
+        "builtins.open",
+        new_callable=mock_open,
+        read_data='{"client_id": "test", "access_token": "test"}',
+    )
     @patch("Tradebot.start_heartbeat")
     @patch("Tradebot.schedule_daily_update")
     @patch("Tradebot.schedule_eod_report")
@@ -718,7 +722,7 @@ class TestBotEndToEnd:
         mock_sleep.side_effect = mock_sleep_side_effect
 
         # Run the bot
-        # ERROR FIX: 
+        # ERROR FIX:
         # 1. Call bot.run() to actually enter the loop.
         # 2. Remove pytest.raises because Tradebot catches KeyboardInterrupt internally.
         bot.start()

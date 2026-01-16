@@ -271,15 +271,11 @@ class TestCheckMarginAvailable:
             "status": "success",
             "data": {"totalMargin": 10000},
         }
-        
+
         # Mock quote data (LTP) - ADDED THIS
         mock_dhan.quote_data.return_value = {
             "status": "success",
-            "data": {
-                "data": {
-                    "12345": {"last_price": 100.0}
-                }
-            }
+            "data": {"data": {"12345": {"last_price": 100.0}}},
         }
 
         ok, msg = check_margin_available("12345", "MCX_COMM", 10)
@@ -291,24 +287,28 @@ class TestCheckMarginAvailable:
         """Should return False when margin is insufficient"""
         mock_dhan.get_fund_limits.return_value = {
             "status": "success",
-            "data": {"availableBalance": 5000},
+            "data": {"availableBalance": 500},
         }
-        mock_dhan.margin_calculator.return_value = {
-            "status": "success",
-            "data": {"totalMargin": 10000},
-        }
-        
-        # Mock quote data (High LTP) - ADDED THIS
+
+        # FIX: Ensure the structure matches "data" -> "data" -> ID -> Price
+        # And provide BOTH string and integer keys to be safe against the implementation
         mock_dhan.quote_data.return_value = {
             "status": "success",
             "data": {
                 "data": {
-                    "12345": {"last_price": 200.0}
+                    "12345": {"last_price": 200.0, "LTP": 200.0},
+                    12345: {"last_price": 200.0, "LTP": 200.0},
                 }
-            }
+            },
         }
 
+        # 200 * 10 * 1.05 = 2100 required. 500 available. -> Should be False
         ok, msg = check_margin_available("12345", "MCX_COMM", 10)
+
+        # Debugging aid (optional, but helpful if it fails again)
+        if ok:
+            print(f"DEBUG: Failed to catch insufficient margin. Msg: {msg}")
+
         assert ok == False
         assert "Insufficient" in msg
 
