@@ -5,11 +5,12 @@
 # --- Core Dependencies ---
 dhanhq>=2.0.0
 pandas>=2.2.0
-numpy>=1.26.0,<2.0.0    # Safe 1.x version
+numpy>=1.26.0,<2.0.0     # Critical: Keep <2.0 to protect dhanhq
 
 # --- Technical Analysis ---
-# Standard version works fine on Python 3.11!
-pandas-ta>=0.3.14b
+# Explicitly request the new beta version (0.4.x)
+# This version supports Python 3.12 and fixes the 'matplotlib' crash
+pandas-ta>=0.4.0b0
 
 # --- Async Support ---
 aiohttp>=3.9.0
