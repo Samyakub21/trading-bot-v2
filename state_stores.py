@@ -507,6 +507,11 @@ class TradeStateManager:
                 if hasattr(self._state, key):
                     setattr(self._state, key, value)
 
+    def get_instrument(self) -> Optional[str]:
+        """Get the current instrument"""
+        with self._data_lock:
+            return self._state.instrument
+
     def load_from_dict(self, data: Dict[str, Any]):
         """Load state from dictionary"""
         with self._data_lock:

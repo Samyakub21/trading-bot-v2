@@ -34,9 +34,9 @@ dhan: dhanhq = dhanhq(CLIENT_ID, ACCESS_TOKEN)
 # POLL FALLBACK CONFIGURATION
 # =============================================================================
 POLL_FALLBACK_ENABLED = config.get_trading_param("POLL_FALLBACK_ENABLED", True)
-POLL_FALLBACK_THRESHOLD_SECONDS = config.get_trading_param("POLL_FALLBACK_THRESHOLD", 5)
+POLL_FALLBACK_THRESHOLD_SECONDS = int(config.get_trading_param("POLL_FALLBACK_THRESHOLD", 5))
 _last_poll_time: datetime = datetime.now()
-_poll_cooldown_seconds = config.get_trading_param("POLL_COOLDOWN", 2)
+_poll_cooldown_seconds = int(config.get_trading_param("POLL_COOLDOWN", 2))
 
 
 def _get_ltp_via_rest(security_id: str, exchange_segment_str: str) -> Optional[float]:
