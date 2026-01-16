@@ -5,12 +5,11 @@
 # --- Core Dependencies ---
 dhanhq>=2.0.0
 pandas>=2.2.0
-numpy>=1.26.0,<2.0.0    # pinned to keep your bot safe
+numpy>=1.26.0,<2.0.0    # Safe 1.x version
 
 # --- Technical Analysis ---
-# We use the original pandas-ta from the dev branch (ZIP install).
-# This behaves exactly like the commented-out version but fixes the Python 3.12 crash.
-pandas-ta @ https://github.com/twopirllc/pandas-ta/archive/development.zip
+# Standard version works fine on Python 3.11!
+pandas-ta>=0.3.14b
 
 # --- Async Support ---
 aiohttp>=3.9.0
