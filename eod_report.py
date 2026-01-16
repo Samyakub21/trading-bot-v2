@@ -177,7 +177,7 @@ def generate_html_report(
 
     # Calculate totals
     total_pnl = sum(t.get("pnl", 0) for t in trades)
-    total_brokerage = 0
+    total_brokerage = 0.0
 
     # Process trades for display
     trade_rows = []
@@ -662,7 +662,7 @@ def send_report_telegram() -> bool:
 
         # Calculate summary
         total_pnl = sum(t.get("pnl", 0) for t in trades)
-        total_brokerage = 0
+        total_brokerage = 0.0
 
         for trade in trades:
             instrument = trade.get("instrument", "DEFAULT")

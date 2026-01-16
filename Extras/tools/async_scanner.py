@@ -9,7 +9,7 @@ import logging
 import pandas as pd
 import pandas_ta as ta
 from datetime import datetime, timedelta
-from typing import Optional, Dict, Any, List, Tuple
+from typing import Optional, Dict, Any, List, Tuple, cast
 from concurrent.futures import ThreadPoolExecutor
 from functools import partial
 
@@ -280,12 +280,13 @@ async def scan_all_instruments_async() -> List[Dict[str, Any]]:
 
     # Analyze instruments with valid data
     analysis_tasks = []
-    for result in fetch_results:
-        if isinstance(result, Exception):
-            logging.error(f"Fetch exception: {result}")
+    for fetch_result in fetch_results:
+        if isinstance(fetch_result, Exception):
+            logging.error(f"Fetch exception: {fetch_result}")
             continue
 
-        inst_key, df_15, df_60 = result
+        fetch_result = cast(Tuple[str, Optional[pd.DataFrame], Optional[pd.DataFrame]], fetch_result)
+        inst_key, df_15, df_60 = fetch_result
         if df_15 is None or df_60 is None:
             logging.debug(f"   ❌ {inst_key}: No data available")
             continue
@@ -296,16 +297,17 @@ async def scan_all_instruments_async() -> List[Dict[str, Any]]:
     analysis_results = await asyncio.gather(*analysis_tasks, return_exceptions=True)
 
     # Collect valid signals
-    for result in analysis_results:
-        if isinstance(result, Exception):
-            logging.error(f"Analysis exception: {result}")
+    for analysis_result in analysis_results:
+        if isinstance(analysis_result, Exception):
+            logging.error(f"Analysis exception: {analysis_result}")
             continue
 
-        if result is not None:
-            signals_found.append(result)
-            signal_type = "📈 BULLISH" if result["signal"] == "BUY" else "📉 BEARISH"
+        analysis_result = cast(Optional[Dict[str, Any]], analysis_result)
+        if analysis_result is not None:
+            signals_found.append(analysis_result)
+            signal_type = "📈 BULLISH" if analysis_result["signal"] == "BUY" else "📉 BEARISH"
             logging.info(
-                f"   ✅ {result['instrument']}: {signal_type} | RSI: {result['rsi']:.1f} | Strength: {result['signal_strength']:.1f}"
+                f"   ✅ {analysis_result['instrument']}: {signal_type} | RSI: {analysis_result['rsi']:.1f} | Strength: {analysis_result['signal_strength']:.1f}"
             )
 
     # Sort by priority first, then by signal strength
@@ -456,17 +458,17 @@ async def fetch_multiple_option_chains(
         if inst:
             tasks.append(
                 get_option_chain_async(
-                    inst["exchange_segment_str"],
-                    inst["future_id"],
-                    inst["expiry_date"],
-                    inst["option_type"],
+                    str(inst["exchange_segment_str"]),
+                    str(inst["future_id"]),
+                    str(inst["expiry_date"]),
+                    str(inst["option_type"]),
                 )
             )
 
     results = await asyncio.gather(*tasks, return_exceptions=True)
 
     return {
-        inst_key: result if not isinstance(result, Exception) else None
+        inst_key: cast(Optional[Dict], result) if not isinstance(result, Exception) else None
         for inst_key, result in zip(instruments, results)
     }
 

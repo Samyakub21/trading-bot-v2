@@ -5,7 +5,7 @@
 import os
 import json
 import logging
-import requests
+import requests  # type: ignore
 import pandas as pd
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
@@ -19,7 +19,7 @@ try:
     USE_DATABASE = config.get_trading_param("USE_DATABASE", True)
 except ImportError:
     USE_DATABASE = False
-    DatabaseManager = None
+    DatabaseManager = None  # type: ignore
 from instruments import (
     INSTRUMENTS,
     DEFAULT_INSTRUMENT,
@@ -664,7 +664,7 @@ def is_instrument_market_open(instrument_key: str) -> Tuple[bool, str]:
         return False, "Unknown instrument"
 
     inst = INSTRUMENTS[instrument_key]
-    return is_market_open(inst["market_start"], inst["market_end"])
+    return is_market_open(str(inst["market_start"]), str(inst["market_end"]))
 
 
 def can_instrument_trade_new(instrument_key: str) -> Tuple[bool, str]:
@@ -673,7 +673,7 @@ def can_instrument_trade_new(instrument_key: str) -> Tuple[bool, str]:
         return False, "Unknown instrument"
 
     inst = INSTRUMENTS[instrument_key]
-    return can_place_new_trade(inst["no_new_trade_after"])
+    return can_place_new_trade(str(inst["no_new_trade_after"]))
 
 
 def should_auto_square_off(market_end: str) -> Tuple[bool, str]:

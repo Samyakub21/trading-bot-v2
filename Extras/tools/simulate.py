@@ -1,5 +1,6 @@
 import time
 import random
+from typing import cast
 
 # --- MOCK VARIABLES ---
 active_trade = {
@@ -29,13 +30,13 @@ for i in range(1, 51):
     ltp = current_price
 
     # 1. Calc Risk (R)
-    risk_unit = abs(active_trade["entry_price"] - active_trade["initial_sl"])
+    risk_unit = abs(cast(int, active_trade["entry_price"]) - cast(int, active_trade["initial_sl"]))
 
     # Calc R-Multiple (guard against zero risk_unit)
     if active_trade["type"] == "BUY":
-        profit_points = ltp - active_trade["entry_price"]
+        profit_points = ltp - cast(int, active_trade["entry_price"])
     else:
-        profit_points = active_trade["entry_price"] - ltp
+        profit_points = cast(int, active_trade["entry_price"]) - ltp
 
     if risk_unit == 0:
         print("Warning: risk_unit is zero; skipping r-multiple calculations")
@@ -56,32 +57,32 @@ for i in range(1, 51):
     # reset per-iteration lock variable
     lock_r = None
     new_sl = None
-    if r_multiple >= 4.0 and active_trade["step_level"] < 4:
+    if r_multiple >= 4.0 and cast(int, active_trade["step_level"]) < 4:
         print("   >>> 🔒 LOCKING 3R (Step 4)")
         lock_r = 3.0
         active_trade["step_level"] = 4
-    elif r_multiple >= 3.0 and active_trade["step_level"] < 3:
+    elif r_multiple >= 3.0 and cast(int, active_trade["step_level"]) < 3:
         print("   >>> 🔒 LOCKING 2R (Step 3)")
         lock_r = 2.0
         active_trade["step_level"] = 3
-    elif r_multiple >= 2.0 and active_trade["step_level"] < 2:
+    elif r_multiple >= 2.0 and cast(int, active_trade["step_level"]) < 2:
         print("   >>> 🔒 LOCKING 1R (Step 2)")
         lock_r = 1.0
         active_trade["step_level"] = 2
 
     # Execute SL Move (only tighten stop, don't move it backwards)
-    if lock_r is not None and active_trade["step_level"] > 0:
+    if lock_r is not None and cast(int, active_trade["step_level"]) > 0:
         if active_trade["type"] == "BUY":
-            candidate = active_trade["entry_price"] + (lock_r * risk_unit)
-            if candidate > active_trade["current_sl_level"]:
+            candidate = cast(int, active_trade["entry_price"]) + (lock_r * risk_unit)
+            if candidate > cast(int, active_trade["current_sl_level"]):
                 active_trade["current_sl_level"] = candidate
         else:
-            candidate = active_trade["entry_price"] - (lock_r * risk_unit)
-            if candidate < active_trade["current_sl_level"]:
+            candidate = cast(int, active_trade["entry_price"]) - (lock_r * risk_unit)
+            if candidate < cast(int, active_trade["current_sl_level"]):
                 active_trade["current_sl_level"] = candidate
 
     # CHECK IF SL HIT
-    if ltp <= active_trade["current_sl_level"]:
+    if ltp <= cast(int, active_trade["current_sl_level"]):
         print(f">>> 🛑 SL HIT at {ltp}. Trade Closed.")
         break
 

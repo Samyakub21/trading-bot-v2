@@ -35,6 +35,7 @@ class DatabaseManager:
 
     _instance: Optional["DatabaseManager"] = None
     _lock = threading.Lock()
+    _initialized: bool = False
 
     def __new__(cls, db_path: str = DEFAULT_DB_PATH):
         """Singleton pattern for database access"""
@@ -254,7 +255,7 @@ class DatabaseManager:
             List of trade dictionaries
         """
         query = "SELECT * FROM trade_history WHERE 1=1"
-        params = []
+        params: List[Any] = []
 
         if days:
             cutoff_date = (datetime.now() - timedelta(days=days)).strftime(
@@ -334,7 +335,7 @@ class DatabaseManager:
         """
         if backup_dir is None:
             # Default to Extras/backup relative to project root
-            backup_dir = Path(__file__).parent.parent / "Extras" / "backup"
+            backup_dir = str(Path(__file__).parent.parent / "Extras" / "backup")
 
         backup_path = Path(backup_dir)
         backup_path.mkdir(parents=True, exist_ok=True)

@@ -15,7 +15,7 @@ Usage:
 """
 
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, cast
 import pandas as pd
 import pandas_ta as ta
 import logging
@@ -485,12 +485,12 @@ def get_strategy(
     inst_config = INSTRUMENTS.get(instrument, {})
 
     # Get instrument-specific strategy params
-    inst_params = inst_config.get("strategy_params", {})
+    inst_params = cast(Dict[str, Any], inst_config.get("strategy_params", {}))
 
     # Merge with provided params (provided params take precedence)
     merged_params = {**inst_params, **(params or {})}
 
-    return strategy_class(instrument, merged_params)
+    return strategy_class(instrument, merged_params)  # type: ignore
 
 
 def get_available_strategies() -> List[str]:

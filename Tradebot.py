@@ -9,7 +9,7 @@ import time
 import threading
 import logging
 from dataclasses import dataclass, field
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, cast
 
 from config import config
 from instruments import (
@@ -318,7 +318,7 @@ class TradingBot:
                 f"⏰ Market Hours: {inst['market_start']} - {inst['market_end']}"
             )
             logging.info(f"🚫 No New Trades After: {inst['no_new_trade_after']}")
-            market_end_hour, market_end_min = map(int, inst["market_end"].split(":"))
+            market_end_hour, market_end_min = map(int, str(inst["market_end"]).split(":"))
             sq_min = market_end_min - self.config.auto_square_off_buffer
             sq_hour = market_end_hour
             if sq_min < 0:
@@ -368,7 +368,7 @@ class TradingBot:
         else:
             inst = INSTRUMENTS[self.active_instrument]
             market_open, market_msg = is_market_open(
-                inst["market_start"], inst["market_end"]
+                str(inst["market_start"]), str(inst["market_end"])
             )
             logging.info(f"🏪 Market Status: {market_msg}")
 

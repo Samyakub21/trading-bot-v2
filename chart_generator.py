@@ -8,7 +8,7 @@
 import io
 import logging
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, cast
 
 import pandas as pd
 import matplotlib
@@ -80,16 +80,16 @@ def generate_trade_chart(
             return None
 
         # Take last 50 candles for better visibility
-        df_chart = df.tail(50).copy()
+        df_chart = cast(pd.DataFrame, df.tail(50).copy())
 
         # Create figure with subplots
-        fig = plt.figure(figsize=CHART_STYLE["figure_size"])
+        fig = plt.figure(figsize=cast(tuple[int, int], CHART_STYLE["figure_size"]))
 
         # Main price chart (80% of height)
-        ax_price = fig.add_axes([0.1, 0.25, 0.85, 0.65])
+        ax_price = fig.add_axes((0.1, 0.25, 0.85, 0.65))
 
         # Volume chart (15% of height)
-        ax_volume = fig.add_axes([0.1, 0.08, 0.85, 0.15], sharex=ax_price)
+        ax_volume = fig.add_axes((0.1, 0.08, 0.85, 0.15), sharex=ax_price)
 
         # Plot candlesticks
         _plot_candlesticks(ax_price, df_chart)
@@ -195,6 +195,7 @@ def generate_trade_chart(
 
 def _plot_candlesticks(ax, df: pd.DataFrame) -> None:
     """Plot candlestick chart on the given axes."""
+    df = cast(pd.DataFrame, df)
     try:
         # Ensure index is datetime
         if not isinstance(df.index, pd.DatetimeIndex):
@@ -252,6 +253,7 @@ def _plot_candlesticks(ax, df: pd.DataFrame) -> None:
 
 def _plot_volume(ax, df: pd.DataFrame) -> None:
     """Plot volume bars on the given axes."""
+    df = cast(pd.DataFrame, df)
     try:
         if "volume" not in df.columns:
             return
@@ -283,12 +285,13 @@ def _plot_volume(ax, df: pd.DataFrame) -> None:
 
 def _plot_emas(ax, df: pd.DataFrame) -> None:
     """Plot EMAs if they exist in the dataframe."""
+    df = cast(pd.DataFrame, df)
     try:
         ema_cols = [col for col in df.columns if col.upper().startswith("EMA")]
 
         if not ema_cols:
             # Calculate common EMAs if not present
-            for period, color in zip([9, 21, 50], CHART_STYLE["ema_colors"]):
+            for period, color in zip([9, 21, 50], cast(list[str], CHART_STYLE["ema_colors"])):
                 if len(df) >= period:
                     ema = df["close"].ewm(span=period, adjust=False).mean()
                     ax.plot(
@@ -301,8 +304,8 @@ def _plot_emas(ax, df: pd.DataFrame) -> None:
                     )
         else:
             for i, col in enumerate(ema_cols[:3]):
-                color = CHART_STYLE["ema_colors"][i % len(CHART_STYLE["ema_colors"])]
-                ax.plot(
+                color = cast(list[str], CHART_STYLE["ema_colors"])[i % len(cast(list[str], CHART_STYLE["ema_colors"]))]
+                ax.plot(  # type: ignore[index]
                     df.index,
                     df[col],
                     color=color,
@@ -317,6 +320,7 @@ def _plot_emas(ax, df: pd.DataFrame) -> None:
 
 def _highlight_entry_candle(ax, df: pd.DataFrame, signal: str) -> None:
     """Highlight the entry candle with an arrow."""
+    df = cast(pd.DataFrame, df)
     try:
         if not isinstance(df.index, pd.DatetimeIndex):
             return
@@ -352,6 +356,7 @@ def _add_indicator_annotations(
     ax, df: pd.DataFrame, indicators: Dict[str, Any]
 ) -> None:
     """Add indicator value annotations to the chart."""
+    df = cast(pd.DataFrame, df)
     try:
         annotation_text = []
 

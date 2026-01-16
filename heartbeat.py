@@ -176,9 +176,9 @@ class HeartbeatWriter:
 
                 trade_manager = get_trade_state_manager()
                 if trade_manager:
-                    active_trade = trade_manager.is_active()
+                    active_trade = trade_manager.is_active
                     if active_trade:
-                        instrument = trade_manager.get_instrument()
+                        instrument = trade_manager.state.instrument
             except Exception:
                 pass
 

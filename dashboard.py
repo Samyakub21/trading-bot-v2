@@ -20,7 +20,7 @@ import plotly.graph_objects as go
 from datetime import datetime, timedelta
 from pathlib import Path
 import time
-from typing import Optional, Dict, Any, List, Tuple
+from typing import Optional, Dict, Any, List, Tuple, cast
 from functools import wraps
 import threading
 
@@ -594,6 +594,7 @@ PASSWORD_POLICY = {
 
 def hash_password_bcrypt(password: str) -> str:
     """Hash password using bcrypt (secure)"""
+    password = cast(str, password)
     if BCRYPT_AVAILABLE:
         salt = bcrypt.gensalt(rounds=12)  # Cost factor of 12
         return bcrypt.hashpw(password.encode("utf-8"), salt).decode("utf-8")
@@ -609,6 +610,8 @@ def hash_password_bcrypt(password: str) -> str:
 
 def verify_password_bcrypt(password: str, hashed: str) -> bool:
     """Verify password against bcrypt hash"""
+    password = cast(str, password)
+    hashed = cast(str, hashed)
     if BCRYPT_AVAILABLE:
         try:
             return bcrypt.checkpw(password.encode("utf-8"), hashed.encode("utf-8"))
@@ -637,25 +640,27 @@ def validate_password_policy(password: str) -> Tuple[bool, List[str]]:
     """
     errors: List[str] = []
 
-    if len(password) < PASSWORD_POLICY["min_length"]:
+    min_length = cast(int, PASSWORD_POLICY["min_length"])
+    if len(password) < min_length:
         errors.append(
-            f"Password must be at least {PASSWORD_POLICY['min_length']} characters long"
+            f"Password must be at least {min_length} characters long"
         )
 
-    if PASSWORD_POLICY["require_uppercase"] and not re.search(r"[A-Z]", password):
+    if cast(bool, PASSWORD_POLICY["require_uppercase"]) and not re.search(r"[A-Z]", password):
         errors.append("Password must contain at least one uppercase letter")
 
-    if PASSWORD_POLICY["require_lowercase"] and not re.search(r"[a-z]", password):
+    if cast(bool, PASSWORD_POLICY["require_lowercase"]) and not re.search(r"[a-z]", password):
         errors.append("Password must contain at least one lowercase letter")
 
-    if PASSWORD_POLICY["require_digit"] and not re.search(r"\d", password):
+    if cast(bool, PASSWORD_POLICY["require_digit"]) and not re.search(r"\d", password):
         errors.append("Password must contain at least one digit")
 
-    if PASSWORD_POLICY["require_special"]:
-        special_pattern = f"[{re.escape(PASSWORD_POLICY['special_chars'])}]"
+    if cast(bool, PASSWORD_POLICY["require_special"]):
+        special_chars = cast(str, PASSWORD_POLICY["special_chars"])
+        special_pattern = f"[{re.escape(special_chars)}]"
         if not re.search(special_pattern, password):
             errors.append(
-                f"Password must contain at least one special character ({PASSWORD_POLICY['special_chars']})"
+                f"Password must contain at least one special character ({special_chars})"
             )
 
     return len(errors) == 0, errors
@@ -1169,7 +1174,7 @@ def load_trade_history() -> List[Dict[str, Any]]:
 
 def load_websocket_status() -> Dict[str, Any]:
     """Load WebSocket status with defaults"""
-    default_status = {
+    default_status: Dict[str, Any] = {
         "connected": False,
         "last_message_time": None,
         "latency_ms": 0,
@@ -1775,7 +1780,7 @@ def calculate_manual_sl_target(
 
     # Dynamic SL calculation based on 1R risk
     # Using a default risk of ~1% of entry price or minimum strike step
-    risk_amount = max(entry_price * 0.01, strike_step)
+    risk_amount = max(entry_price * 0.01, cast(float, strike_step))
 
     if signal == "BUY":
         stop_loss = round(entry_price - risk_amount, 2)

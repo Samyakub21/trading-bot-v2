@@ -23,7 +23,7 @@ import logging
 import pandas as pd
 import pandas_ta as ta
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, cast
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -377,7 +377,8 @@ class BacktestEngine:
         from instruments import INSTRUMENTS
 
         self.inst_config = INSTRUMENTS.get(instrument, {})
-        self.lot_size = self.inst_config.get("lot_size", 1)
+        lot_size_value = self.inst_config.get("lot_size", 1)
+        self.lot_size = cast(int, lot_size_value)
 
     def load_data(self, data: Optional[pd.DataFrame] = None) -> bool:
         """
@@ -470,6 +471,8 @@ class BacktestEngine:
 
         logging.info(f"🔄 Starting backtest: {self.instrument} with {strategy.name}")
         logging.info(f"   Period: {self.start_date.date()} to {self.end_date.date()}")
+
+        assert self.historical_data is not None, "Historical data must be loaded"
 
         # Resample to 15min and 60min for strategy
         df_15 = (

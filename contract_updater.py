@@ -7,9 +7,9 @@ import os
 import csv
 import json
 import logging
-import requests
+import requests  # type: ignore
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Tuple, Any
+from typing import Dict, List, Optional, Tuple, Any, cast
 from pathlib import Path
 
 from config import config
@@ -303,6 +303,10 @@ def get_updated_instrument_config(
     # Extract details
     security_id = future_contract.get("SEM_SMST_SECURITY_ID", "")
     expiry_date = future_contract.get("_expiry_date")
+
+    if expiry_date is None:
+        logging.warning(f"Could not find expiry date for {instrument_key}")
+        return None
 
     # For lot size: prefer the API value if > 1, otherwise keep original config
     # (Dhan API returns 1.0 for some MCX commodities which is incorrect)
@@ -612,28 +616,29 @@ if __name__ == "__main__":
         save_contract_cache(updated)
 
         print("\n📊 Updated Configurations:")
-        for key, config in updated.items():
+        for key, config_dict in updated.items():
+            updated_config: Dict[str, Any] = config_dict
             print(f"  {key}:")
-            print(f"    Future ID: {config['future_id']}")
-            print(f"    Expiry: {config['expiry_date']}")
-            print(f"    Lot Size: {config['lot_size']}")
+            print(f"    Future ID: {updated_config['future_id']}")
+            print(f"    Expiry: {updated_config['expiry_date']}")
+            print(f"    Lot Size: {updated_config['lot_size']}")
 
     if args.show:
         from instruments import INSTRUMENTS
 
-        inst = INSTRUMENTS.get(args.show.upper())
+        inst = INSTRUMENTS.get(args.show.upper())  # type: ignore
         if inst:
-            config = get_updated_instrument_config(args.show.upper(), inst)
-            if config:
+            shown_config: Optional[Dict[str, Any]] = get_updated_instrument_config(args.show.upper(), cast(Dict[str, Any], inst))
+            if shown_config:
                 print(f"\n📊 {args.show.upper()} Configuration:")
-                for key, value in config.items():
+                for key, value in shown_config.items():
                     print(f"  {key}: {value}")
 
     if args.expiries:
         from instruments import INSTRUMENTS
 
         inst = INSTRUMENTS.get(args.expiries.upper(), {})
-        exchange = inst.get("exchange_segment_str", "MCX")
+        exchange = str(inst.get("exchange_segment_str", "MCX"))
         dates = get_next_expiry_dates(args.expiries.upper(), exchange)
         print(f"\n📅 Next expiry dates for {args.expiries.upper()}:")
         for i, date in enumerate(dates, 1):

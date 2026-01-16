@@ -6,11 +6,11 @@ import json
 import logging
 import time
 import threading
-import requests
+import requests  # type: ignore
 import pandas as pd
 import pandas_ta as ta
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, cast
 from dhanhq import dhanhq
 
 from config import config
@@ -63,7 +63,7 @@ except ImportError:
 try:
     from economic_calendar import EconomicCalendar
 
-    _economic_calendar = EconomicCalendar()
+    _economic_calendar: Optional[EconomicCalendar] = EconomicCalendar()
     ECONOMIC_CALENDAR_AVAILABLE = True
 except ImportError:
     _economic_calendar = None
@@ -84,6 +84,9 @@ instrument_lock: threading.Lock = threading.Lock()
 
 # Signal tracker singleton (replaces global LAST_SIGNAL, LAST_SIGNAL_TIME, LAST_LOSS_TIME)
 _signal_tracker: Any = get_signal_tracker()
+
+# Global variable for calendar log timing
+_last_calendar_log: Optional[datetime] = None
 
 
 def update_last_signal(signal: str, instrument: Optional[str] = None) -> None:
@@ -127,10 +130,11 @@ def get_instrument_data(
     try:
         # Resolve parameters from instrument_key if provided
         if instrument_key is not None:
-            inst = INSTRUMENTS[instrument_key]
-            future_id = inst["future_id"]
-            exchange_segment_str = inst["exchange_segment_str"]
-            instrument_type = inst["instrument_type"]
+            assert instrument_key is not None
+            inst = cast(Dict[str, Any], INSTRUMENTS[instrument_key])
+            future_id = cast(Optional[str], inst.get("future_id", ""))
+            exchange_segment_str = cast(Optional[str], inst.get("exchange_segment_str", ""))
+            instrument_type = cast(str, inst.get("instrument_type", "FUTCOM"))
             log_context = instrument_key
             cache_key = instrument_key
         else:
@@ -140,7 +144,7 @@ def get_instrument_data(
                 )
                 return None, None
             log_context = f"future_id={future_id}"
-            cache_key = future_id
+            cache_key = cast(str, future_id)
 
         # V2 API: intraday_minute_data uses different parameters
         # Format: security_id, exchange_segment, instrument_type, from_date, to_date
@@ -303,9 +307,9 @@ def analyze_instrument_signal(
     if USE_STRATEGY_PATTERN and STRATEGIES_AVAILABLE:
         try:
             # Get instrument-specific strategy
-            inst_config = INSTRUMENTS.get(instrument_key, {})
-            strategy_name = inst_config.get("strategy")  # None uses default
-            strategy_params = inst_config.get("strategy_params", {})
+            inst_config = cast(Dict[str, Any], INSTRUMENTS.get(instrument_key, {}))
+            strategy_name = cast(Optional[str], inst_config.get("strategy"))  # None uses default
+            strategy_params = cast(Dict[str, Any], inst_config.get("strategy_params", {}))
 
             strategy = get_strategy(instrument_key, strategy_name, strategy_params)
             signal_info = strategy.analyze(df_15.copy(), df_60.copy())
@@ -321,8 +325,8 @@ def analyze_instrument_signal(
     # Legacy hardcoded logic (backward compatibility)
     try:
         # Get per-instrument parameters or use defaults
-        inst_config = INSTRUMENTS.get(instrument_key, {})
-        inst_params = inst_config.get("strategy_params", {})
+        inst_config = cast(Dict[str, Any], INSTRUMENTS.get(instrument_key, {}))
+        inst_params = cast(Dict[str, Any], inst_config.get("strategy_params", {}))
 
         rsi_bullish = inst_params.get("rsi_bullish_threshold", RSI_BULLISH_THRESHOLD)
         rsi_bearish = inst_params.get("rsi_bearish_threshold", RSI_BEARISH_THRESHOLD)
@@ -906,7 +910,7 @@ def verify_order(
 
         start_time = time.time()
 
-        for attempt in range(config["max_retries"]):
+        for attempt in range(cast(int, config["max_retries"])):
             # Check total timeout
             elapsed = time.time() - start_time
             if elapsed >= config["total_timeout"]:
@@ -1065,14 +1069,15 @@ def execute_trade_entry(
 
     update_last_signal(signal, instrument=inst_key)
 
-    option_entry_price = order_details.get("avg_price", 0)
+    order_details = cast(Dict[str, Any], order_details)
+    option_entry_price = cast(int, order_details.get("avg_price", 0))
     actual_order_id = order_details.get("order_id")
 
     # Subscribe to option feed
     market_feed = socket_handler.get_market_feed()
     if market_feed:
         socket_handler.subscribe_option(
-            market_feed, opt_id, inst["exchange_segment_int"]
+            market_feed, opt_id, cast(int, inst["exchange_segment_int"])
         )
     socket_handler.set_option_ltp(option_entry_price)
 
@@ -1270,18 +1275,18 @@ def run_scanner(active_trade: Dict[str, Any], active_instrument: str) -> None:
                         opt_id = get_atm_option(
                             signal,
                             price,
-                            inst["exchange_segment_str"],
-                            inst["future_id"],
-                            inst["expiry_date"],
-                            inst["option_type"],
-                            inst["strike_step"],
+                            cast(str, inst["exchange_segment_str"]),
+                            cast(str, inst["future_id"]),
+                            cast(str, inst["expiry_date"]),
+                            cast(str, inst["option_type"]),
+                            cast(int, inst["strike_step"]),
                             underlying=inst_key,
                         )
 
                         if opt_id:
                             # Check margin
                             margin_ok, margin_msg = check_margin_available(
-                                opt_id, inst["exchange_segment_str"], inst["lot_size"]
+                                opt_id, cast(str, inst["exchange_segment_str"]), cast(int, inst["lot_size"])
                             )
 
                             if margin_ok:
@@ -1344,14 +1349,15 @@ def run_scanner(active_trade: Dict[str, Any], active_instrument: str) -> None:
             if ECONOMIC_CALENDAR_AVAILABLE and _economic_calendar:
                 should_pause, pause_event = _economic_calendar.should_pause_trading()
                 if should_pause:
+                    assert pause_event is not None
                     logging.info(
                         f"📰 Trading paused due to economic event: {pause_event.name}"
                     )
                     # Log upcoming events periodically (once per hour)
                     if (
-                        not hasattr(run_scanner, "_last_calendar_log")
+                        _last_calendar_log is None
                         or (
-                            datetime.now() - run_scanner._last_calendar_log
+                            datetime.now() - _last_calendar_log
                         ).total_seconds()
                         > 3600
                     ):
@@ -1362,7 +1368,7 @@ def run_scanner(active_trade: Dict[str, Any], active_instrument: str) -> None:
                             )
                             for evt in upcoming[:3]:
                                 logging.info(f"   - {evt.name} @ {evt.timestamp}")
-                        run_scanner._last_calendar_log = datetime.now()
+                        _last_calendar_log = datetime.now()
                     time.sleep(60)  # Check again in 1 minute
                     continue
 
@@ -1419,11 +1425,11 @@ def run_scanner(active_trade: Dict[str, Any], active_instrument: str) -> None:
                         opt_id = get_atm_option(
                             signal,
                             price,
-                            inst["exchange_segment_str"],
-                            inst["future_id"],
-                            inst["expiry_date"],
-                            inst["option_type"],
-                            inst["strike_step"],
+                            cast(str, inst["exchange_segment_str"]),
+                            cast(str, inst["future_id"]),
+                            cast(str, inst["expiry_date"]),
+                            cast(str, inst["option_type"]),
+                            cast(int, inst["strike_step"]),
                             underlying=inst_key,
                         )
 
@@ -1432,7 +1438,7 @@ def run_scanner(active_trade: Dict[str, Any], active_instrument: str) -> None:
                             continue
 
                         margin_ok, margin_msg = check_margin_available(
-                            opt_id, inst["exchange_segment_str"], inst["lot_size"]
+                            opt_id, cast(str, inst["exchange_segment_str"]), cast(int, inst["lot_size"])
                         )
                         if not margin_ok:
                             target_type = "CE" if signal == "BUY" else "PE"
@@ -1464,7 +1470,7 @@ def run_scanner(active_trade: Dict[str, Any], active_instrument: str) -> None:
                     inst = INSTRUMENTS[active_instrument]
 
                     market_open, market_msg = is_market_open(
-                        inst["market_start"], inst["market_end"]
+                        cast(str, inst["market_start"]), cast(str, inst["market_end"])
                     )
                     if not market_open:
                         logging.debug(f"⏰ {market_msg}")
@@ -1472,7 +1478,7 @@ def run_scanner(active_trade: Dict[str, Any], active_instrument: str) -> None:
                         continue
 
                     can_trade, trade_msg = can_place_new_trade(
-                        inst["no_new_trade_after"]
+                        cast(str, inst["no_new_trade_after"])
                     )
                     if not can_trade:
                         logging.debug(f"⏰ {trade_msg}")
@@ -1480,19 +1486,19 @@ def run_scanner(active_trade: Dict[str, Any], active_instrument: str) -> None:
                         continue
 
                     df_15, df_60 = get_resampled_data(
-                        inst["future_id"],
-                        inst["exchange_segment_str"],
-                        inst["instrument_type"],
+                        cast(str, inst.get("future_id", "")),
+                        cast(str, inst.get("exchange_segment_str", "")),
+                        cast(str, inst.get("instrument_type", "FUTCOM")),
                     )
 
                     if df_15 is not None and df_60 is not None:
-                        signal_info = analyze_instrument_signal(
+                        signal_data: Optional[Dict[str, Any]] = analyze_instrument_signal(
                             active_instrument, df_15, df_60
                         )
 
-                        if signal_info:
-                            signal = signal_info["signal"]
-                            price = signal_info["price"]
+                        if signal_data is not None:
+                            signal = signal_data["signal"]
+                            price = signal_data["price"]
 
                             # Check signal cooldown per-instrument (prevents whipsaw on same instrument)
                             in_signal_cooldown, signal_msg = (
@@ -1515,19 +1521,19 @@ def run_scanner(active_trade: Dict[str, Any], active_instrument: str) -> None:
                             opt_id = get_atm_option(
                                 signal,
                                 price,
-                                inst["exchange_segment_str"],
-                                inst["future_id"],
-                                inst["expiry_date"],
-                                inst["option_type"],
-                                inst["strike_step"],
+                                cast(str, inst["exchange_segment_str"]),
+                                cast(str, inst["future_id"]),
+                                cast(str, inst["expiry_date"]),
+                                cast(str, inst["option_type"]),
+                                cast(int, inst["strike_step"]),
                                 underlying=active_instrument,
                             )
 
                             if opt_id:
                                 margin_ok, margin_msg = check_margin_available(
                                     opt_id,
-                                    inst["exchange_segment_str"],
-                                    inst["lot_size"],
+                                    cast(str, inst["exchange_segment_str"]),
+                                    cast(int, inst["lot_size"]),
                                 )
                                 if not margin_ok:
                                     target_type = "CE" if signal == "BUY" else "PE"

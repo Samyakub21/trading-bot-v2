@@ -6,7 +6,7 @@ import logging
 import time
 import threading
 from datetime import datetime
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple, cast
 from dhanhq import dhanhq
 
 from config import config
@@ -202,7 +202,7 @@ def close_trade(
             profit_points = active_trade.get("entry", 0) - exit_price_future
         r_multiple = profit_points / risk_unit
     else:
-        r_multiple = 0
+        r_multiple = 0.0
 
     # Update daily P&L
     daily_data = update_daily_pnl(pnl_per_lot, is_win)
@@ -238,7 +238,7 @@ def close_trade(
     market_feed = socket_handler.get_market_feed()
     if market_feed and active_trade.get("option_id"):
         inst = INSTRUMENTS.get(trade_instrument, {})
-        exchange_segment_int = inst.get("exchange_segment_int", 5)
+        exchange_segment_int = cast(int, inst.get("exchange_segment_int", 5))
         socket_handler.unsubscribe_option(
             market_feed, active_trade["option_id"], exchange_segment_int
         )
@@ -327,7 +327,7 @@ def run_manager(active_trade: Dict[str, Any], active_instrument: str) -> None:
                 INSTRUMENTS[trade_instrument]["exchange_segment_str"],
             )
             trade_inst_config = INSTRUMENTS.get(
-                trade_instrument, INSTRUMENTS[active_instrument]
+                trade_instrument, INSTRUMENTS.get(active_instrument, {})
             )
 
             # Construct Option Name for Alert
@@ -343,7 +343,7 @@ def run_manager(active_trade: Dict[str, Any], active_instrument: str) -> None:
             # Check auto square-off
             now = datetime.now()
             current_time = now.strftime("%H:%M")
-            market_end = trade_inst_config.get("market_end", "23:30")
+            market_end = str(trade_inst_config.get("market_end", "23:30"))
             market_end_hour, market_end_min = map(int, market_end.split(":"))
             square_off_hour = market_end_hour
             square_off_min = market_end_min - AUTO_SQUARE_OFF_BUFFER
@@ -394,7 +394,7 @@ def run_manager(active_trade: Dict[str, Any], active_instrument: str) -> None:
                     exit_response, "EXIT-AUTO-SQUAREOFF", symbol_name=option_name
                 )
                 exit_price = (
-                    exit_details.get("avg_price", opt_ltp) if exit_success else opt_ltp
+                    exit_details.get("avg_price", opt_ltp) if exit_details and exit_success else opt_ltp
                 )
 
                 close_trade(
@@ -470,7 +470,7 @@ def run_manager(active_trade: Dict[str, Any], active_instrument: str) -> None:
                 )
 
                 if exit_success:
-                    exit_price = exit_details.get("avg_price", opt_ltp)
+                    exit_price = exit_details.get("avg_price", opt_ltp) if exit_details else opt_ltp
                 else:
                     exit_price = opt_ltp
                     logging.warning(
@@ -530,14 +530,14 @@ def run_manager(active_trade: Dict[str, Any], active_instrument: str) -> None:
                     exit_response, "EXIT-TARGET", symbol_name=option_name
                 )
                 exit_price = (
-                    exit_details.get("avg_price", opt_ltp) if exit_success else opt_ltp
+                    exit_details.get("avg_price", opt_ltp) if exit_details and exit_success else opt_ltp
                 )
 
                 close_trade("1:5 TARGET HIT", ltp, exit_price, active_trade)
                 continue
 
             # Trailing Steps
-            lock_r = 0
+            lock_r = 0.0
             msg = ""
             trade_lock = scanner.get_trade_lock()
 
@@ -690,7 +690,7 @@ def place_exit_order(active_trade: Dict[str, Any], exit_reason: str = "MANUAL") 
     )
 
     if exit_success:
-        exit_price = exit_details.get("avg_price", opt_ltp)
+        exit_price = (exit_details.get("avg_price", opt_ltp) if exit_details else opt_ltp)
         close_trade(exit_reason, latest_ltp, exit_price, active_trade)
         return True
     else:

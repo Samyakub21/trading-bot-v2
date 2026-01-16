@@ -9,7 +9,7 @@ import asyncio
 import json
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, cast
 from dhanhq import marketfeed
 
 from instruments import INSTRUMENTS, MULTI_SCAN_ENABLED, get_instruments_to_scan
@@ -23,8 +23,8 @@ ACCESS_TOKEN = config.ACCESS_TOKEN
 DATA_DIR = Path(__file__).parent / "data"  # Force 'data' folder
 
 MARKET_FEED = None
-LATEST_LTP = 0
-OPTION_LTP = 0
+LATEST_LTP = 0.0
+OPTION_LTP = 0.0
 LAST_TICK_TIME = datetime.now()
 LAST_OPTION_TICK_TIME = datetime.now()
 INSTRUMENT_LTP = {}
@@ -48,7 +48,7 @@ def get_all_instrument_subscriptions(
     for inst_key in instruments_to_scan:
         inst = INSTRUMENTS[inst_key]
         subscriptions.append(
-            (inst["exchange_segment_int"], str(inst["future_id"]), marketfeed.Ticker)
+            (cast(int, inst["exchange_segment_int"]), str(inst["future_id"]), marketfeed.Ticker)
         )
 
     return subscriptions

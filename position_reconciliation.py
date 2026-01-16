@@ -6,7 +6,7 @@
 import logging
 import time
 from datetime import datetime
-from typing import Dict, Any, Optional, List, Tuple
+from typing import Dict, Any, Optional, List, Tuple, cast
 from dataclasses import dataclass, field
 from enum import Enum
 
@@ -238,7 +238,7 @@ def reconcile_positions(active_trade: Dict[str, Any]) -> ReconciliationResult:
         for pos in broker_positions:
             # Check if it's an options position on one of our instruments
             for inst_key, inst_config in INSTRUMENTS.items():
-                if inst_config.get("exchange_segment_str") in pos.exchange_segment:
+                if cast(str, inst_config.get("exchange_segment_str")) in pos.exchange_segment:
                     our_positions.append(pos)
                     break
 
