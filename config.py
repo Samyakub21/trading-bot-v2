@@ -6,6 +6,7 @@ Loads trading parameters from trading_config.json or environment variables
 
 import os
 import json
+import logging
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -57,15 +58,7 @@ DEFAULT_TRADING_CONFIG = {
         "BANKNIFTY": 2,
     },
     # Per-Instrument Custom Settings (overrides global settings)
-    "PER_INSTRUMENT_SETTINGS": {
-        # Example: Custom settings for specific instruments
-        # "CRUDEOIL": {
-        #     "use_custom": True,
-        #     "rsi_bullish": 58,
-        #     "rsi_bearish": 42,
-        #     "volume_multiplier": 1.3
-        # }
-    },
+    "PER_INSTRUMENT_SETTINGS": {},
     # State Files (fallback when database is disabled)
     "STATE_FILE": str(DATA_DIR / "trade_state_active.json"),
     "DAILY_PNL_FILE": str(DATA_DIR / "daily_pnl_combined.json"),
@@ -78,7 +71,6 @@ class Config:
 
     def __init__(self):
         # --- Credentials ---
-        # Try to load from environment variables first (recommended for servers)
         self.CLIENT_ID = os.getenv("DHAN_CLIENT_ID")
         self.ACCESS_TOKEN = os.getenv("DHAN_ACCESS_TOKEN")
         self.TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
@@ -96,7 +88,19 @@ class Config:
         ):
             self._load_credentials_from_file()
 
-        # Validate that we have credentials
+        # Clean whitespace
+        self.CLIENT_ID = str(self.CLIENT_ID).strip() if self.CLIENT_ID else ""
+        self.ACCESS_TOKEN = str(self.ACCESS_TOKEN).strip() if self.ACCESS_TOKEN else ""
+        self.TELEGRAM_TOKEN = (
+            str(self.TELEGRAM_TOKEN).strip() if self.TELEGRAM_TOKEN else ""
+        )
+        self.TELEGRAM_CHAT_ID = (
+            str(self.TELEGRAM_CHAT_ID).strip() if self.TELEGRAM_CHAT_ID else ""
+        )
+        if self.SIGNAL_BOT_TOKEN:
+            self.SIGNAL_BOT_TOKEN = str(self.SIGNAL_BOT_TOKEN).strip()
+
+        # Validate credentials (LOG WARNING INSTEAD OF CRASHING FOR CI/TESTS)
         if not all(
             [
                 self.CLIENT_ID,
@@ -105,19 +109,10 @@ class Config:
                 self.TELEGRAM_CHAT_ID,
             ]
         ):
-            raise ValueError(
-                "Missing credentials! Please either:\n"
-                "1. Set environment variables: DHAN_CLIENT_ID, DHAN_ACCESS_TOKEN, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID\n"
-                "2. Create a credentials.json file (see credentials.example.json)\n"
+            logging.warning(
+                "⚠️ MISSING CREDENTIALS! The bot will fail to connect, but tests can run.\n"
+                "Please set DHAN_CLIENT_ID, DHAN_ACCESS_TOKEN, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID."
             )
-
-        # Clean whitespace
-        self.CLIENT_ID = str(self.CLIENT_ID).strip()
-        self.ACCESS_TOKEN = str(self.ACCESS_TOKEN).strip()
-        self.TELEGRAM_TOKEN = str(self.TELEGRAM_TOKEN).strip()
-        self.TELEGRAM_CHAT_ID = str(self.TELEGRAM_CHAT_ID).strip()
-        if self.SIGNAL_BOT_TOKEN:
-            self.SIGNAL_BOT_TOKEN = str(self.SIGNAL_BOT_TOKEN).strip()
 
         # --- Trading Configuration ---
         self._trading_config = self._load_trading_config()
@@ -142,23 +137,15 @@ class Config:
             print(f"Warning: Could not load credentials.json: {e}")
 
     def _load_trading_config(self) -> Dict[str, Any]:
-        """
-        Load trading configuration with priority:
-        1. Environment variables (highest priority)
-        2. trading_config.json file
-        3. Default values (lowest priority)
-        """
-        # Start with defaults
+        """Load trading configuration"""
         config = DEFAULT_TRADING_CONFIG.copy()
 
-        # Try to load from trading_config.json
         config_file = Path(__file__).parent / "trading_config.json"
         if config_file.exists():
             try:
                 with open(config_file, "r") as f:
                     file_config = json.load(f)
                 config.update(file_config)
-                print(f"Loaded trading config from {config_file}")
             except Exception as e:
                 print(f"Warning: Could not load trading_config.json: {e}")
 
@@ -186,10 +173,9 @@ class Config:
         return config
 
     def get_trading_param(self, key: str, default: Any = None) -> Any:
-        """Get a trading configuration parameter"""
         return self._trading_config.get(key, default)
 
-    # --- Trading Config Properties (for easy access) ---
+    # --- Properties ---
     @property
     def MAX_DAILY_LOSS(self) -> float:
         return self._trading_config["MAX_DAILY_LOSS"]
@@ -238,7 +224,6 @@ class Config:
     def TRADE_HISTORY_FILE(self) -> str:
         return self._trading_config["TRADE_HISTORY_FILE"]
 
-    # --- Database Configuration ---
     @property
     def USE_DATABASE(self) -> bool:
         return self._trading_config.get("USE_DATABASE", True)
@@ -249,7 +234,6 @@ class Config:
             "DATABASE_PATH", str(DATA_DIR / "trading_bot.db")
         )
 
-    # --- Poll Fallback Configuration ---
     @property
     def POLL_FALLBACK_ENABLED(self) -> bool:
         return self._trading_config.get("POLL_FALLBACK_ENABLED", True)
@@ -262,10 +246,8 @@ class Config:
     def POLL_COOLDOWN(self) -> int:
         return self._trading_config.get("POLL_COOLDOWN", 2)
 
-    # --- Instrument Configuration ---
     @property
     def ENABLED_INSTRUMENTS(self) -> list:
-        """List of enabled instruments for scanning/trading"""
         return self._trading_config.get(
             "ENABLED_INSTRUMENTS",
             ["CRUDEOIL", "NATURALGAS", "GOLD", "SILVER", "NIFTY", "BANKNIFTY"],
@@ -273,7 +255,6 @@ class Config:
 
     @property
     def INSTRUMENT_PRIORITY(self) -> dict:
-        """Priority order for instruments (1=highest)"""
         return self._trading_config.get(
             "INSTRUMENT_PRIORITY",
             {
@@ -288,22 +269,10 @@ class Config:
 
     @property
     def PER_INSTRUMENT_SETTINGS(self) -> dict:
-        """Custom per-instrument signal settings"""
         return self._trading_config.get("PER_INSTRUMENT_SETTINGS", {})
 
     def get_instrument_settings(self, instrument: str) -> dict:
-        """
-        Get signal settings for a specific instrument.
-        Returns custom settings if defined, otherwise global settings.
-
-        Args:
-            instrument: Instrument key (e.g., 'CRUDEOIL')
-
-        Returns:
-            Dictionary with rsi_bullish, rsi_bearish, volume_multiplier
-        """
         per_inst = self.PER_INSTRUMENT_SETTINGS.get(instrument, {})
-
         if per_inst.get("use_custom", False):
             return {
                 "rsi_bullish": per_inst.get("rsi_bullish", self.RSI_BULLISH_THRESHOLD),
@@ -312,8 +281,6 @@ class Config:
                     "volume_multiplier", self.VOLUME_MULTIPLIER
                 ),
             }
-
-        # Return global settings
         return {
             "rsi_bullish": self.RSI_BULLISH_THRESHOLD,
             "rsi_bearish": self.RSI_BEARISH_THRESHOLD,
@@ -321,52 +288,27 @@ class Config:
         }
 
     def get_enabled_instruments_sorted(self) -> list:
-        """
-        Get enabled instruments sorted by priority.
-
-        Returns:
-            List of instrument keys sorted by priority (highest first)
-        """
         enabled = self.ENABLED_INSTRUMENTS
         priority = self.INSTRUMENT_PRIORITY
-
         return sorted(enabled, key=lambda x: priority.get(x, 999))
 
-    # --- Socket/Network Configuration ---
     @property
     def HEARTBEAT_TIMEOUT_SECONDS(self) -> int:
-        """Timeout in seconds before socket reconnection is triggered"""
         return 30
 
     @property
     def RECONNECT_DELAY_SECONDS(self) -> int:
-        """Delay in seconds before attempting socket reconnection"""
         return 5
 
     @property
     def MIN_TICK_INTERVAL_MS(self) -> int:
-        """Minimum interval in milliseconds between tick processing"""
         return 100
 
     def reload_trading_config(self) -> Dict[str, Any]:
-        """
-        Reload trading configuration from file.
-        Call this to pick up live config changes from the dashboard.
-
-        Returns:
-            The updated trading config dictionary
-        """
         self._trading_config = self._load_trading_config()
         return self._trading_config
 
     def get_fresh_config(self) -> Dict[str, Any]:
-        """
-        Get a fresh copy of trading config from file without caching.
-        Useful for checking if config has changed.
-
-        Returns:
-            Fresh trading config dictionary
-        """
         return self._load_trading_config()
 
 

@@ -314,13 +314,15 @@ class TradingBot:
                     nse_shown = True
         else:
             inst = INSTRUMENTS[self.active_instrument]
-            logging.info(
-                f"⏰ Market Hours: {inst['market_start']} - {inst['market_end']}"
-            )
-            logging.info(f"🚫 No New Trades After: {inst['no_new_trade_after']}")
-            market_end_hour, market_end_min = map(
-                int, str(inst["market_end"]).split(":")
-            )
+            # FIX: Cast to str before split
+            market_start = str(inst.get("market_start", "09:00"))
+            market_end = str(inst.get("market_end", "23:30"))
+
+            logging.info(f"⏰ Market Hours: {market_start} - {market_end}")
+            logging.info(f"🚫 No New Trades After: {inst.get('no_new_trade_after')}")
+
+            # FIX: Ensure we are splitting a string
+            market_end_hour, market_end_min = map(int, market_end.split(":"))
             sq_min = market_end_min - self.config.auto_square_off_buffer
             sq_hour = market_end_hour
             if sq_min < 0:
@@ -364,14 +366,16 @@ class TradingBot:
         if MULTI_SCAN_ENABLED:
             logging.info("🏪 Market Status (per instrument):")
             for inst_key in get_instruments_to_scan():
-                market_open, market_msg = is_instrument_market_open(inst_key)
+                # FIX: Explicit cast to str
+                market_open, market_msg = is_instrument_market_open(str(inst_key))
                 status_icon = "✅" if market_open else "⏸️"
                 logging.info(f"   {status_icon} {inst_key}: {market_msg}")
         else:
             inst = INSTRUMENTS[self.active_instrument]
-            market_open, market_msg = is_market_open(
-                str(inst["market_start"]), str(inst["market_end"])
-            )
+            # FIX: Explicit cast to str
+            start_str = str(inst.get("market_start", "09:00"))
+            end_str = str(inst.get("market_end", "23:30"))
+            market_open, market_msg = is_market_open(start_str, end_str)
             logging.info(f"🏪 Market Status: {market_msg}")
 
         # Check daily limits at startup

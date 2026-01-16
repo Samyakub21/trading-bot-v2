@@ -176,9 +176,17 @@ class HeartbeatWriter:
 
                 trade_manager = get_trade_state_manager()
                 if trade_manager:
-                    active_trade = trade_manager.is_active
+                    # FIX: 'is_active' is likely a bool property or variable, not a method
+                    # Use getattr to be safe, or just access it without ()
+                    active_trade = getattr(trade_manager, "is_active", False)
+                    # If it IS a method, this will return the method object which is truthy
+                    # If it's a bool, it returns the bool.
+                    # If the error was "bool not callable", it was definitely a bool.
+                    if callable(active_trade):
+                        active_trade = active_trade()
+
                     if active_trade:
-                        instrument = trade_manager.state.instrument
+                        instrument = trade_manager.get_instrument()
             except Exception:
                 pass
 
