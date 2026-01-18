@@ -1,0 +1,19 @@
+services:
+  trading-bot:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: trading-bot-v2
+    restart: unless-stopped
+    volumes:
+      - ../data:/app/data
+      - ../reports:/app/reports
+      - ../bot.log:/app/bot.log
+      - ../credentials.json:/app/credentials.json:ro
+    environment:
+      - TZ=Asia/Kolkata
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"

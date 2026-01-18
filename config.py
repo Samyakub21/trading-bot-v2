@@ -7,7 +7,6 @@ Loads trading parameters from trading_config.json or environment variables
 import os
 import json
 import logging
-import logging
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -59,7 +58,6 @@ DEFAULT_TRADING_CONFIG = {
         "BANKNIFTY": 2,
     },
     # Per-Instrument Custom Settings (overrides global settings)
-    "PER_INSTRUMENT_SETTINGS": {},
     "PER_INSTRUMENT_SETTINGS": {},
     # State Files (fallback when database is disabled)
     "STATE_FILE": str(DATA_DIR / "trade_state_active.json"),
@@ -115,10 +113,6 @@ class Config:
                 "⚠️ MISSING CREDENTIALS! The bot will fail to connect, but tests can run.\n"
                 "Please set DHAN_CLIENT_ID, DHAN_ACCESS_TOKEN, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID."
             )
-            logging.warning(
-                "⚠️ MISSING CREDENTIALS! The bot will fail to connect, but tests can run.\n"
-                "Please set DHAN_CLIENT_ID, DHAN_ACCESS_TOKEN, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID."
-            )
 
         # --- Trading Configuration ---
         self._trading_config = self._load_trading_config()
@@ -134,16 +128,32 @@ class Config:
             with open(credentials_file, "r") as f:
                 creds = json.load(f)
 
+            # Load Core Credentials
             self.CLIENT_ID = creds.get("CLIENT_ID", self.CLIENT_ID)
             self.ACCESS_TOKEN = creds.get("ACCESS_TOKEN", self.ACCESS_TOKEN)
             self.TELEGRAM_TOKEN = creds.get("TELEGRAM_TOKEN", self.TELEGRAM_TOKEN)
             self.TELEGRAM_CHAT_ID = creds.get("TELEGRAM_CHAT_ID", self.TELEGRAM_CHAT_ID)
             self.SIGNAL_BOT_TOKEN = creds.get("SIGNAL_BOT_TOKEN", self.SIGNAL_BOT_TOKEN)
+
+            # --- NEW: Load Email Config from JSON ---
+            # We inject these into os.environ so eod_report.py (which uses os.getenv) can find them
+            email_vars = [
+                "SMTP_SERVER",
+                "SMTP_PORT",
+                "EMAIL_ADDRESS",
+                "EMAIL_PASSWORD",
+                "EMAIL_RECIPIENT"
+            ]
+
+            for var in email_vars:
+                if var in creds and creds[var]:
+                    # Only set if it's not empty, ensuring string format
+                    os.environ[var] = str(creds[var])
+
         except Exception as e:
             print(f"Warning: Could not load credentials.json: {e}")
 
     def _load_trading_config(self) -> Dict[str, Any]:
-        """Load trading configuration"""
         """Load trading configuration"""
         config = DEFAULT_TRADING_CONFIG.copy()
 
@@ -182,7 +192,6 @@ class Config:
     def get_trading_param(self, key: str, default: Any = None) -> Any:
         return self._trading_config.get(key, default)
 
-    # --- Properties ---
     # --- Properties ---
     @property
     def MAX_DAILY_LOSS(self) -> float:
