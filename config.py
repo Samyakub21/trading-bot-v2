@@ -142,7 +142,7 @@ class Config:
                 "SMTP_PORT",
                 "EMAIL_ADDRESS",
                 "EMAIL_PASSWORD",
-                "EMAIL_RECIPIENT"
+                "EMAIL_RECIPIENT",
             ]
 
             for var in email_vars:
