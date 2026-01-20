@@ -1345,8 +1345,7 @@ def render_prometheus_info():
             st.success(f"✅ Metrics server running on port {PROMETHEUS_PORT}")
             st.code(f"curl http://localhost:{PROMETHEUS_PORT}/metrics", language="bash")
 
-            st.markdown(
-                """
+            st.markdown("""
             **Available Metrics:**
             - `trading_bot_trades_total` - Total trades by instrument and outcome
             - `trading_bot_daily_pnl` - Current daily P&L
@@ -1358,8 +1357,7 @@ def render_prometheus_info():
             - `trading_bot_websocket_messages_total` - Total messages received
             - `trading_bot_websocket_errors_total` - Total errors
             - `dashboard_logins_total` - Dashboard login attempts
-            """
-            )
+            """)
 
             # Grafana example
             st.markdown("**Grafana Dashboard Example:**")
@@ -1800,14 +1798,12 @@ def render_manual_trade():
     """Render manual trade entry form"""
     st.subheader("🎯 Manual Trade Entry")
 
-    st.info(
-        """
+    st.info("""
     **Manual Intervention Controls**  
     Use this form to manually enter trades when you see a signal the bot misses,
     or when you want to take a position based on news or manual analysis.
     The system will auto-calculate SL and Target based on the bot's risk management rules.
-    """
-    )
+    """)
 
     # Check if there's already an active trade
     state_data = load_trade_state()
@@ -2038,16 +2034,14 @@ def render_manual_trade():
             with open(signal_file, "w") as f:
                 json.dump(manual_trade_signal, f, indent=2)
 
-            st.success(
-                f"""
+            st.success(f"""
             ✅ **Manual trade signal created!**  
             - **{inst_config.get('name')} {atm_strike} {opt_type}**
             - Entry: ₹{option_premium} | SL: ₹{stop_loss} | Target: ₹{target_1}
             
             ⚠️ The bot will pick up this signal on its next scan cycle.
             Please ensure the Tradebot is running.
-            """
-            )
+            """)
 
             # Log the action
             if PROMETHEUS_AVAILABLE:
@@ -2588,15 +2582,13 @@ def render_settings_page():
                 "💾 Save Configuration", type="primary", use_container_width=True
             ):
                 if save_trading_config(new_config):
-                    st.success(
-                        """
+                    st.success("""
                     ✅ **Configuration saved successfully!**  
                     Changes will take effect on the next scan cycle.
                     
                     Note: For some settings to fully apply, the bot may need to 
                     complete its current operation cycle.
-                    """
-                    )
+                    """)
 
                     # Log config change
                     config_log = DATA_DIR / "config_change_log.json"
