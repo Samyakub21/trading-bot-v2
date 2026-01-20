@@ -394,8 +394,15 @@ class MomentumBreakoutStrategy(Strategy):
 
             # Calculate indicators
             df_15["RSI"] = RSIIndicator(close=df_15["close"], window=rsi_len).rsi()
-            df_15["ADX"] = ADXIndicator(high=df_15["high"], low=df_15["low"], close=df_15["close"], window=14).adx()
-            df_15["ATR"] = AverageTrueRange(high=df_15["high"], low=df_15["low"], close=df_15["close"], window=atr_len).average_true_range()
+            df_15["ADX"] = ADXIndicator(
+                high=df_15["high"], low=df_15["low"], close=df_15["close"], window=14
+            ).adx()
+            df_15["ATR"] = AverageTrueRange(
+                high=df_15["high"],
+                low=df_15["low"],
+                close=df_15["close"],
+                window=atr_len,
+            ).average_true_range()
             df_15["vol_avg"] = df_15["volume"].rolling(window=20).mean()
 
             # Calculate recent high/low
@@ -433,7 +440,12 @@ class MomentumBreakoutStrategy(Strategy):
             lower_breakout = recent_low * (1 - breakout_pct)
 
             # BULLISH Breakout
-            if price > upper_breakout and rsi_val > rsi_min_bull and volume_confirmed and adx_confirmed:
+            if (
+                price > upper_breakout
+                and rsi_val > rsi_min_bull
+                and volume_confirmed
+                and adx_confirmed
+            ):
                 signal = "BUY"
                 breakout_strength = (price - recent_high) / recent_high * 100
                 signal_strength = breakout_strength + (rsi_val - rsi_min_bull)
@@ -443,7 +455,12 @@ class MomentumBreakoutStrategy(Strategy):
                 stop_loss = price - (atr_val * atr_mult)
 
             # BEARISH Breakout
-            elif price < lower_breakout and rsi_val < rsi_max_bear and volume_confirmed and adx_confirmed:
+            elif (
+                price < lower_breakout
+                and rsi_val < rsi_max_bear
+                and volume_confirmed
+                and adx_confirmed
+            ):
                 signal = "SELL"
                 breakout_strength = (recent_low - price) / recent_low * 100
                 signal_strength = breakout_strength + (rsi_max_bear - rsi_val)
@@ -569,7 +586,9 @@ class FinniftySpecificStrategy(Strategy):
                     banknifty_close = banknifty_df_60.iloc[-2]["close"]
                     banknifty_correlation_ok = banknifty_close > banknifty_ema.iloc[-2]
                 except Exception as e:
-                    logging.warning(f"[{self.name}] Could not check BANKNIFTY correlation: {e}")
+                    logging.warning(
+                        f"[{self.name}] Could not check BANKNIFTY correlation: {e}"
+                    )
                     banknifty_correlation_ok = True  # Default to allow if check fails
 
             signal = None

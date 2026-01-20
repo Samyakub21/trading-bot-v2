@@ -884,14 +884,18 @@ def scan_all_instruments() -> List[Dict[str, Any]]:
                 if banknifty_config:
                     banknifty_df_15, banknifty_df_60 = get_instrument_data(
                         future_id=banknifty_config.get("future_id"),
-                        exchange_segment_str=banknifty_config.get("exchange_segment_str"),
-                        instrument_type=banknifty_config.get("instrument_type")
+                        exchange_segment_str=banknifty_config.get(
+                            "exchange_segment_str"
+                        ),
+                        instrument_type=banknifty_config.get("instrument_type"),
                     )
                     if banknifty_df_60 is not None:
                         kwargs["banknifty_df_60"] = banknifty_df_60
             except Exception as e:
-                logging.warning(f"Could not get BANKNIFTY data for FINNIFTY correlation: {e}")
-        
+                logging.warning(
+                    f"Could not get BANKNIFTY data for FINNIFTY correlation: {e}"
+                )
+
         signal_info = analyze_instrument_signal(inst_key, df_15, df_60, **kwargs)
         if signal_info:
             signals_found.append(signal_info)
@@ -1822,18 +1826,28 @@ def run_scanner(active_trade: Dict[str, Any], active_instrument: str) -> None:
                             try:
                                 banknifty_config = INSTRUMENTS.get("BANKNIFTY", {})
                                 if banknifty_config:
-                                    banknifty_df_15, banknifty_df_60 = get_instrument_data(
-                                        future_id=banknifty_config.get("future_id"),
-                                        exchange_segment_str=banknifty_config.get("exchange_segment_str"),
-                                        instrument_type=banknifty_config.get("instrument_type")
+                                    banknifty_df_15, banknifty_df_60 = (
+                                        get_instrument_data(
+                                            future_id=banknifty_config.get("future_id"),
+                                            exchange_segment_str=banknifty_config.get(
+                                                "exchange_segment_str"
+                                            ),
+                                            instrument_type=banknifty_config.get(
+                                                "instrument_type"
+                                            ),
+                                        )
                                     )
                                     if banknifty_df_60 is not None:
                                         kwargs["banknifty_df_60"] = banknifty_df_60
                             except Exception as e:
-                                logging.warning(f"Could not get BANKNIFTY data for FINNIFTY correlation: {e}")
-                        
+                                logging.warning(
+                                    f"Could not get BANKNIFTY data for FINNIFTY correlation: {e}"
+                                )
+
                         signal_data: Optional[Dict[str, Any]] = (
-                            analyze_instrument_signal(active_instrument, df_15, df_60, **kwargs)
+                            analyze_instrument_signal(
+                                active_instrument, df_15, df_60, **kwargs
+                            )
                         )
 
                         if signal_data is not None:
