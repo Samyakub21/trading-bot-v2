@@ -38,7 +38,8 @@ DEFAULT_TRADING_CONFIG = {
     "VOLUME_MULTIPLIER": 1.2,  # Volume must be 1.2x average for signal confirmation
     # Order Execution
     "LIMIT_ORDER_BUFFER": 0.01,  # 1% buffer for limit orders
-    # Paper Trading / Dry Run
+    # Logging Configuration
+    "DEBUG_MODE": False,  # Enable debug logging when True
     "PAPER_TRADING": True,  # Simulate trades without placing orders
     # Database Configuration
     "USE_DATABASE": True,  # Use SQLite database instead of JSON files
@@ -50,7 +51,8 @@ DEFAULT_TRADING_CONFIG = {
     # Instrument Configuration
     "ENABLED_INSTRUMENTS": [
         "CRUDEOIL",
-        "NATURALGAS",
+        # "NATURALGAS",
+        "NATGASMINI",
         # "GOLD",
         # "SILVER",
         "NIFTY",
@@ -60,7 +62,8 @@ DEFAULT_TRADING_CONFIG = {
         "CRUDEOIL": 3,
         # "GOLD": 5,
         # "SILVER": 6,  # Lowest priority
-        "NATURALGAS": 4,
+        # "NATURALGAS": 4,
+        "NATGASMINI": 4,
         "NIFTY": 1,  # Highest priority
         "BANKNIFTY": 2,
     },
@@ -71,6 +74,15 @@ DEFAULT_TRADING_CONFIG = {
     "DAILY_PNL_FILE": str(DATA_DIR / "daily_pnl_combined.json"),
     "TRADE_HISTORY_FILE": str(DATA_DIR / "trade_history_combined.json"),
 }
+
+# =============================================================================
+# LOGGING CONFIGURATION
+# =============================================================================
+LOG_FORMAT = "%(asctime)s | %(levelname)-8s | [%(name)s] | %(message)s"
+LOG_DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
+LOG_FILE_MAX_BYTES = 5 * 1024 * 1024  # 5MB
+LOG_FILE_BACKUP_COUNT = 5
+LOG_FILE_PATH = str(DATA_DIR / "trading_bot.log")
 
 
 class Config:
@@ -358,6 +370,10 @@ class Config:
     @property
     def MIN_TICK_INTERVAL_MS(self) -> int:
         return 100
+
+    @property
+    def DEBUG_MODE(self) -> bool:
+        return self._trading_config.get("DEBUG_MODE", False)
 
     def reload_trading_config(self) -> Dict[str, Any]:
         self._trading_config = self._load_trading_config()

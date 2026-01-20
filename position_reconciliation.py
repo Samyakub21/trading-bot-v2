@@ -12,7 +12,7 @@ from enum import Enum
 
 from config import config
 from instruments import INSTRUMENTS
-from utils import send_alert, save_state, load_state
+from utils import send_alert, send_high_priority_alert, save_state, load_state
 
 from dhanhq import dhanhq
 
@@ -321,16 +321,58 @@ def auto_fix_mismatch(
         return True
 
     if result.status == ReconciliationStatus.MISMATCH_BROKER_ONLY:
-        # Broker has position but local doesn't - need manual intervention
-        logging.error("❌ Cannot auto-fix: Broker has untracked position")
-        send_alert(
-            "🚨 **MANUAL INTERVENTION REQUIRED**\n"
-            "Broker has position(s) not tracked locally.\n"
-            "Please verify and either:\n"
-            "1. Update local state manually\n"
-            "2. Close the position at broker"
-        )
-        return False
+        # Broker has position but local doesn't - auto-sync local state
+        if result.broker_positions:
+            broker_pos = result.broker_positions[0]
+
+            logging.warning("⚠️ Auto-fixing: Syncing local state with broker position")
+
+            # Update local state to match broker position
+            active_trade["status"] = True
+            active_trade["instrument"] = None  # Will be determined from position data
+            active_trade["type"] = (
+                "LONG" if broker_pos.position_type == "LONG" else "SHORT"
+            )
+            active_trade["future_entry"] = broker_pos.average_price
+            active_trade["entry_price"] = broker_pos.average_price
+            active_trade["entry"] = broker_pos.average_price
+            active_trade["option_entry"] = broker_pos.average_price
+            active_trade["initial_sl"] = (
+                broker_pos.average_price * 0.95
+            )  # Conservative SL
+            active_trade["current_sl_level"] = broker_pos.average_price * 0.95
+            active_trade["sl"] = broker_pos.average_price * 0.95
+            active_trade["step_level"] = 0
+            active_trade["order_id"] = None  # Unknown
+            active_trade["option_id"] = broker_pos.security_id
+            active_trade["entry_time"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            active_trade["lot_size"] = broker_pos.quantity
+            active_trade["exchange_segment_str"] = broker_pos.exchange_segment
+            active_trade["atm_strike"] = (
+                0  # Unknown, will be parsed from symbol if needed
+            )
+
+            save_state(active_trade)
+
+            send_high_priority_alert(
+                "🔧 **AUTO-RECOVERY APPLIED**\n"
+                f"Zombie position recovered!\n"
+                f"Security: {broker_pos.trading_symbol}\n"
+                f"Type: {broker_pos.position_type}\n"
+                f"Quantity: {broker_pos.quantity}\n"
+                f"Avg Price: ₹{broker_pos.average_price}\n"
+                f"Local state has been synchronized."
+            )
+
+            return True
+        else:
+            logging.error("❌ Cannot auto-fix: No broker position data available")
+            send_high_priority_alert(
+                "🚨 **AUTO-RECOVERY FAILED**\n"
+                "Broker-only mismatch detected but no position data available.\n"
+                "Manual intervention required!"
+            )
+            return False
 
     if result.status == ReconciliationStatus.MISMATCH_DETAILS:
         # Details mismatch - update local to match broker
@@ -378,15 +420,25 @@ def run_periodic_reconciliation(
                 if result.status != ReconciliationStatus.MATCHED:
                     logging.warning(f"⚠️ Reconciliation issue: {result.message}")
 
-                    # Attempt auto-fix for certain mismatches
-                    if result.status in [
-                        ReconciliationStatus.MISMATCH_LOCAL_ONLY,
-                        ReconciliationStatus.MISMATCH_DETAILS,
-                    ]:
-                        auto_fix_mismatch(result, active_trade)
+                    # Attempt auto-fix for all mismatches
+                    fixed = auto_fix_mismatch(result, active_trade)
+
+                    if not fixed:
+                        # Send high-priority alert for failed recovery attempts
+                        send_high_priority_alert(
+                            "🚨 **RECONCILIATION FAILURE**\n"
+                            f"Status: {result.status.value}\n"
+                            f"Message: {result.message}\n"
+                            "Automated recovery failed - manual intervention required!"
+                        )
 
             except Exception as e:
                 logging.error(f"Reconciliation error: {e}")
+                send_high_priority_alert(
+                    "🚨 **RECONCILIATION THREAD ERROR**\n"
+                    f"Exception: {e}\n"
+                    "Position reconciliation thread has crashed - manual verification required!"
+                )
 
             time.sleep(interval_seconds)
 
