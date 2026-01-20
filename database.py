@@ -14,7 +14,6 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 from contextlib import contextmanager
 
-
 # =============================================================================
 # DATABASE CONFIGURATION
 # =============================================================================
@@ -103,8 +102,7 @@ class DatabaseManager:
         """Initialize database schema"""
         with self.transaction() as cursor:
             # Trade history table
-            cursor.execute(
-                """
+            cursor.execute("""
                 CREATE TABLE IF NOT EXISTS trade_history (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     instrument TEXT NOT NULL,
@@ -125,28 +123,22 @@ class DatabaseManager:
                     lot_size INTEGER,
                     created_at TEXT DEFAULT CURRENT_TIMESTAMP
                 )
-            """
-            )
+            """)
 
             # Create index on entry_time for faster queries
-            cursor.execute(
-                """
+            cursor.execute("""
                 CREATE INDEX IF NOT EXISTS idx_trade_history_entry_time 
                 ON trade_history(entry_time)
-            """
-            )
+            """)
 
             # Create index on instrument for filtering
-            cursor.execute(
-                """
+            cursor.execute("""
                 CREATE INDEX IF NOT EXISTS idx_trade_history_instrument 
                 ON trade_history(instrument)
-            """
-            )
+            """)
 
             # Daily P&L table
-            cursor.execute(
-                """
+            cursor.execute("""
                 CREATE TABLE IF NOT EXISTS daily_pnl (
                     date TEXT PRIMARY KEY,
                     pnl REAL NOT NULL DEFAULT 0,
@@ -156,12 +148,10 @@ class DatabaseManager:
                     created_at TEXT DEFAULT CURRENT_TIMESTAMP,
                     updated_at TEXT DEFAULT CURRENT_TIMESTAMP
                 )
-            """
-            )
+            """)
 
             # Active trade state table
-            cursor.execute(
-                """
+            cursor.execute("""
                 CREATE TABLE IF NOT EXISTS trade_state (
                     id INTEGER PRIMARY KEY CHECK (id = 1),
                     status INTEGER NOT NULL DEFAULT 0,
@@ -179,15 +169,12 @@ class DatabaseManager:
                     extra_data TEXT,
                     updated_at TEXT DEFAULT CURRENT_TIMESTAMP
                 )
-            """
-            )
+            """)
 
             # Insert default state row if not exists
-            cursor.execute(
-                """
+            cursor.execute("""
                 INSERT OR IGNORE INTO trade_state (id, status) VALUES (1, 0)
-            """
-            )
+            """)
 
     # =========================================================================
     # TRADE HISTORY METHODS
@@ -665,8 +652,7 @@ class DatabaseManager:
     def get_instrument_summary(self) -> List[Dict[str, Any]]:
         """Get performance summary grouped by instrument"""
         with self.get_cursor() as cursor:
-            cursor.execute(
-                """
+            cursor.execute("""
                 SELECT 
                     instrument,
                     COUNT(*) as total_trades,
@@ -679,8 +665,7 @@ class DatabaseManager:
                 FROM trade_history
                 GROUP BY instrument
                 ORDER BY total_pnl DESC
-            """
-            )
+            """)
             rows = cursor.fetchall()
             return [dict(row) for row in rows]
 

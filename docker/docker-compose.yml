@@ -1,3 +1,5 @@
+version: '3.8'
+
 services:
   trading-bot:
     build:
@@ -5,13 +7,25 @@ services:
       dockerfile: docker/Dockerfile
     container_name: trading-bot-v2
     restart: unless-stopped
+
+    # 1. Load the .env file from the project root
+    env_file:
+      - ../.env
     volumes:
       - ../data:/app/data
       - ../reports:/app/reports
+      # IMPORTANT: Ensure ../bot.log exists on the host before running docker-compose
+      # Run `touch bot.log` in the project root if it doesn't exist
+      # Docker will create a directory instead of a file if the host file is missing
       - ../bot.log:/app/bot.log
-      - ../credentials.json:/app/credentials.json:ro
     environment:
       - TZ=Asia/Kolkata
+    healthcheck:
+      test: ["CMD", "sh", "-c", "test -f /app/bot.log && test -s /app/bot.log"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
     logging:
       driver: "json-file"
       options:
