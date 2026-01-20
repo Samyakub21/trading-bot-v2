@@ -12,6 +12,13 @@ from dataclasses import dataclass, field
 from typing import Optional, Dict, Any, List, cast
 
 from config import config
+from config import (
+    LOG_FORMAT,
+    LOG_DATE_FORMAT,
+    LOG_FILE_MAX_BYTES,
+    LOG_FILE_BACKUP_COUNT,
+    LOG_FILE_PATH,
+)
 from instruments import (
     INSTRUMENTS,
     DEFAULT_INSTRUMENT,
@@ -54,6 +61,47 @@ from state_stores import (
 from contract_updater import auto_update_instruments_on_startup, schedule_daily_update
 from position_reconciliation import reconcile_on_startup, run_periodic_reconciliation
 
+
+def setup_logging():
+    """Configure structured logging for the trading bot."""
+    import logging
+    from logging.handlers import RotatingFileHandler
+
+    # Clear any existing handlers
+    root_logger = logging.getLogger()
+    root_logger.handlers.clear()
+
+    # Set root logger level
+    log_level = logging.DEBUG if config.DEBUG_MODE else logging.INFO
+    root_logger.setLevel(log_level)
+
+    # Create formatter
+    formatter = logging.Formatter(LOG_FORMAT, datefmt=LOG_DATE_FORMAT)
+
+    # Console handler (INFO level)
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.INFO)
+    console_handler.setFormatter(formatter)
+    root_logger.addHandler(console_handler)
+
+    # File handler (DEBUG level with rotation)
+    file_handler = RotatingFileHandler(
+        LOG_FILE_PATH, maxBytes=LOG_FILE_MAX_BYTES, backupCount=LOG_FILE_BACKUP_COUNT
+    )
+    file_handler.setLevel(logging.DEBUG)
+    file_handler.setFormatter(formatter)
+    root_logger.addHandler(file_handler)
+
+    # Log initial setup
+    logging.info("🔧 Logging system initialized")
+    logging.info(f"📁 Log file: {LOG_FILE_PATH}")
+    logging.info(f"🐛 Debug mode: {'ENABLED' if config.DEBUG_MODE else 'DISABLED'}")
+
+
+# Module-level logger for import-time logging
+logger = logging.getLogger(__name__)
+
+
 # Heartbeat / Dead Man's Switch
 try:
     from heartbeat import (
@@ -67,7 +115,7 @@ try:
     HEARTBEAT_AVAILABLE = True
 except ImportError:
     HEARTBEAT_AVAILABLE = False
-    logging.warning("⚠️ Heartbeat module not available - dead man's switch disabled")
+    logger.warning("⚠️ Heartbeat module not available - dead man's switch disabled")
 
 # End of Day Report
 try:
@@ -80,7 +128,7 @@ try:
     EOD_REPORT_AVAILABLE = True
 except ImportError:
     EOD_REPORT_AVAILABLE = False
-    logging.warning("⚠️ EOD Report module not available - daily reports disabled")
+    logger.warning("⚠️ EOD Report module not available - daily reports disabled")
 
 # =============================================================================
 # LOGGING CONFIGURATION
@@ -153,6 +201,7 @@ class TradingBot:
         Args:
             bot_config: TradeBotConfig instance with credentials and settings
         """
+        self.logger = logging.getLogger("TradingBot")
         self.config = bot_config
         self.active_trade: Dict[str, Any] = load_state()
         self.active_instrument: str = (
@@ -184,7 +233,7 @@ class TradingBot:
         Args:
             reason: Reason for shutdown
         """
-        logging.info(f"🛑 Initiating graceful shutdown: {reason}")
+        self.logger.info(f"🛑 Initiating graceful shutdown: {reason}")
 
         # Signal all threads to stop
         socket_handler.shutdown_socket()
@@ -193,7 +242,7 @@ class TradingBot:
         # Check if there's an open trade
         with self._lock:
             if self.active_trade.get("status"):
-                logging.warning("⚠️ OPEN POSITION DETECTED during shutdown!")
+                self.logger.warning("⚠️ OPEN POSITION DETECTED during shutdown!")
                 trade_instrument = self.active_trade.get(
                     "instrument", self.active_instrument
                 )
@@ -555,6 +604,9 @@ def create_bot() -> TradingBot:
 
 
 if __name__ == "__main__":
+    # Initialize logging system
+    setup_logging()
+
     # Create and start the trading bot
     bot = create_bot()
     bot.start()

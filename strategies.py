@@ -56,6 +56,7 @@ class Strategy(ABC):
         """
         self.instrument = instrument
         self.params = params or {}
+        self.logger = logging.getLogger(f"Strategy.{instrument}")
         self._set_default_params()
 
     @abstractmethod
@@ -106,8 +107,10 @@ class TrendFollowingStrategy(Strategy):
     Best suited for: Commodities (CRUDEOIL, NATURALGAS)
 
     Entry Rules:
-    - BUY: Price > EMA50 (60min), Price > VWAP (15min), RSI > bullish_threshold
-    - SELL: Price < EMA50 (60min), Price < VWAP (15min), RSI < bearish_threshold
+    - BUY: Price > EMA50 (60min), Price > VWAP (15min), RSI > bullish_threshold, ADX > 25
+    - SELL: Price < EMA50 (60min), Price < VWAP (15min), RSI < bearish_threshold, ADX > 25
+    - 200 EMA alignment on 15min chart for long-term trend
+    - ATR-based stop loss (2.0x for CRUDEOIL, 1.5x for others)
     """
 
     def _set_default_params(self) -> None:
@@ -119,6 +122,9 @@ class TrendFollowingStrategy(Strategy):
             "ema_length": 50,
             "volume_multiplier": 1.2,
             "volume_window": 20,
+            "adx_threshold": 25,  # Minimum ADX for trend trades
+            "atr_multiplier": 1.5,  # ATR multiplier for stop loss
+            "atr_length": 14,
         }
         for key, value in defaults.items():
             if key not in self.params:
@@ -129,6 +135,14 @@ class TrendFollowingStrategy(Strategy):
     ) -> Optional[Dict[str, Any]]:
         """Analyze using trend following logic."""
         try:
+            # Universal time filter for NSE indices: No new entries between 11:30 AM and 1:30 PM IST
+            if self.instrument in ["NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY"]:
+                current_time = datetime.now().time()
+                no_trade_start = datetime.strptime("11:30", "%H:%M").time()
+                no_trade_end = datetime.strptime("13:30", "%H:%M").time()
+                if no_trade_start <= current_time <= no_trade_end:
+                    return None
+
             # Get parameters
             rsi_bullish = self.get_param("rsi_bullish_threshold", 60)
             rsi_bearish = self.get_param("rsi_bearish_threshold", 40)
@@ -136,6 +150,11 @@ class TrendFollowingStrategy(Strategy):
             ema_len = self.get_param("ema_length", 50)
             volume_mult = self.get_param("volume_multiplier", 1.2)
             vol_window = self.get_param("volume_window", 20)
+            adx_threshold = self.get_param("adx_threshold", 25)
+            atr_mult = self.get_param("atr_multiplier", 1.5)
+            if self.instrument == "CRUDEOIL":
+                atr_mult = 2.0  # Higher multiplier for Crude Oil noise
+            atr_len = self.get_param("atr_length", 14)
 
             # Calculate indicators
             # 1. EMA on 60min
@@ -146,6 +165,21 @@ class TrendFollowingStrategy(Strategy):
             df_15["RSI"] = RSIIndicator(close=df_15["close"], window=rsi_len).rsi()
             # 3. VWAP (Custom Anchored)
             df_15["VWAP_D"] = calculate_anchored_vwap(df_15)
+            # 4. ADX on 15min
+            df_15["ADX"] = ADXIndicator(
+                high=df_15["high"], low=df_15["low"], close=df_15["close"], window=14
+            ).adx()
+            # 5. 200 EMA on 15min for alignment filter
+            df_15["EMA200"] = EMAIndicator(
+                close=df_15["close"], window=200
+            ).ema_indicator()
+            # 6. ATR for stop loss
+            df_15["ATR"] = AverageTrueRange(
+                high=df_15["high"],
+                low=df_15["low"],
+                close=df_15["close"],
+                window=atr_len,
+            ).average_true_range()
             df_15["vol_avg"] = df_15["volume"].rolling(window=vol_window).mean()
 
             trend = df_60.iloc[-2]
@@ -158,14 +192,26 @@ class TrendFollowingStrategy(Strategy):
             rsi_val = trigger["RSI"]
             ema_val = trend["EMA"]
             trend_close = trend["close"]
+            adx_val = trigger["ADX"]
+            ema200_val = trigger["EMA200"]
+            atr_val = trigger["ATR"]
 
             # Volume confirmation
             volume_confirmed = (
                 current_volume >= (avg_volume * volume_mult) if avg_volume > 0 else True
             )
 
+            # ADX filter: Only allow trend trades if ADX > threshold
+            adx_confirmed = adx_val > adx_threshold
+
+            # 200 EMA alignment filter for TrendFollowing
+            alignment_confirmed = (
+                (price > ema200_val) if self.instrument in ["BANKNIFTY"] else True
+            )
+
             signal = None
             signal_strength = 0
+            stop_loss = 0
 
             # BULLISH Signal
             if (
@@ -173,6 +219,8 @@ class TrendFollowingStrategy(Strategy):
                 and (trigger["close"] > vwap_val)
                 and (rsi_val > rsi_bullish)
                 and volume_confirmed
+                and adx_confirmed
+                and alignment_confirmed
             ):
                 signal = "BUY"
                 signal_strength = (rsi_val - rsi_bullish) + (
@@ -180,6 +228,8 @@ class TrendFollowingStrategy(Strategy):
                 )
                 if avg_volume > 0:
                     signal_strength += (current_volume / avg_volume - 1) * 10
+                # ATR-based stop loss
+                stop_loss = price - (atr_val * atr_mult)
 
             # BEARISH Signal
             elif (
@@ -187,6 +237,7 @@ class TrendFollowingStrategy(Strategy):
                 and (trigger["close"] < vwap_val)
                 and (rsi_val < rsi_bearish)
                 and volume_confirmed
+                and adx_confirmed
             ):
                 signal = "SELL"
                 signal_strength = (rsi_bearish - rsi_val) + (
@@ -194,26 +245,101 @@ class TrendFollowingStrategy(Strategy):
                 )
                 if avg_volume > 0:
                     signal_strength += (current_volume / avg_volume - 1) * 10
+                # ATR-based stop loss
+                stop_loss = price + (atr_val * atr_mult)
 
             if signal:
+                # Hybrid Dynamic Trailing Stop Loss Logic
+                atr_mult = self.get_param("atr_multiplier", 1.5)
+
+                # Initial SL: 1.5x ATR from entry
+                initial_sl_distance = atr_val * 1.5
+
+                # Activation Point: 1.5x ATR favorable move (1:1 R:R)
+                activation_distance = atr_val * 1.5
+
+                # Dynamic Trailing: 1.5x ATR from highest price after activation
+                trail_distance = atr_val * 1.5
+
+                # Maximum profit cap for indices (1:2.5 R:R)
+                max_profit_mult = None
+                if self.instrument in ["NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY"]:
+                    max_profit_mult = 2.5  # 1:2.5 R:R cap for indices
+
+                exit_logic = {
+                    "initial_sl_distance": round(initial_sl_distance, 2),
+                    "activation_atr_mult": 1.5,  # 1.5x ATR for activation
+                    "trail_atr_mult": 1.5,  # 1.5x ATR for trailing
+                    "max_profit_mult": max_profit_mult,  # None for commodities, 2.5 for indices
+                    "atr_value": round(atr_val, 2),
+                    "atr_multiplier": atr_mult,
+                }
+
                 return {
                     "instrument": self.instrument,
                     "signal": signal,
                     "price": price,
                     "rsi": rsi_val,
+                    "adx": adx_val,
                     "volume": current_volume,
                     "avg_volume": avg_volume,
                     "vwap": vwap_val,
                     "ema": ema_val,
+                    "ema200": ema200_val,
                     "signal_strength": signal_strength,
+                    "exit_logic": exit_logic,
                     "strategy": self.name,
                     "df_15": df_15,
                 }
 
+            # Log rejection reasons
+            reasons = []
+            if not volume_confirmed:
+                reasons.append(
+                    f"Volume too low ({current_volume:.0f} < {avg_volume * volume_mult:.0f})"
+                )
+            if not adx_confirmed:
+                reasons.append(f"ADX too low ({adx_val:.1f} < {adx_threshold})")
+            if not alignment_confirmed:
+                reasons.append(
+                    f"Price below 200EMA alignment ({price:.2f} < {ema200_val:.2f})"
+                )
+
+            # Check trend and price conditions
+            bullish_trend = trend_close > ema_val
+            bearish_trend = trend_close < ema_val
+            bullish_price = trigger["close"] > vwap_val
+            bearish_price = trigger["close"] < vwap_val
+            bullish_rsi = rsi_val > rsi_bullish
+            bearish_rsi = rsi_val < rsi_bearish
+
+            if not (bullish_trend and bullish_price and bullish_rsi) and not (
+                bearish_trend and bearish_price and bearish_rsi
+            ):
+                if not bullish_trend and not bearish_trend:
+                    reasons.append("No clear trend direction")
+                elif bullish_trend:
+                    if not bullish_price:
+                        reasons.append(
+                            f"Price not above VWAP ({trigger['close']:.2f} <= {vwap_val:.2f})"
+                        )
+                    if not bullish_rsi:
+                        reasons.append(f"RSI too low ({rsi_val:.1f} <= {rsi_bullish})")
+                elif bearish_trend:
+                    if not bearish_price:
+                        reasons.append(
+                            f"Price not below VWAP ({trigger['close']:.2f} >= {vwap_val:.2f})"
+                        )
+                    if not bearish_rsi:
+                        reasons.append(f"RSI too high ({rsi_val:.1f} >= {rsi_bearish})")
+
+            if reasons:
+                self.logger.info(f"SKIP [{self.instrument}]: {', '.join(reasons)}")
+
             return None
 
         except Exception as e:
-            logging.error(f"[{self.name}] Analysis error for {self.instrument}: {e}")
+            self.logger.exception(f"Analysis error for {self.instrument}")
             return None
 
 
@@ -333,7 +459,7 @@ class MeanReversionStrategy(Strategy):
             return None
 
         except Exception as e:
-            logging.error(f"[{self.name}] Analysis error for {self.instrument}: {e}")
+            self.logger.exception(f"Analysis error for {self.instrument}")
             return None
 
 
@@ -351,6 +477,8 @@ class MomentumBreakoutStrategy(Strategy):
     Entry Rules:
     - BUY: Price breaks above recent high with strong volume and RSI momentum
     - SELL: Price breaks below recent low with strong volume and RSI momentum
+    - ADX > 25 for trend strength
+    - ATR-based stop loss (1.5x default, 2.0x for Crude Oil)
     """
 
     def _set_default_params(self) -> None:
@@ -362,8 +490,9 @@ class MomentumBreakoutStrategy(Strategy):
             "rsi_max_bearish": 45,
             "rsi_length": 14,
             "volume_multiplier": 1.5,  # Strong volume required
+            "adx_threshold": 25,  # Minimum ADX for trend trades
             "atr_multiplier": 1.5,  # ATR multiplier for stop loss
-            "atr_length": 14,  # ATR period
+            "atr_length": 14,
         }
         for key, value in defaults.items():
             if key not in self.params:
@@ -374,8 +503,8 @@ class MomentumBreakoutStrategy(Strategy):
     ) -> Optional[Dict[str, Any]]:
         """Analyze using momentum breakout logic."""
         try:
-            # Time filter for MIDCPNIFTY: No signals between 11:30 AM and 1:30 PM IST
-            if self.instrument == "MIDCPNIFTY":
+            # Universal time filter for NSE indices: No new entries between 11:30 AM and 1:30 PM IST
+            if self.instrument in ["NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY"]:
                 current_time = datetime.now().time()
                 no_trade_start = datetime.strptime("11:30", "%H:%M").time()
                 no_trade_end = datetime.strptime("13:30", "%H:%M").time()
@@ -389,8 +518,15 @@ class MomentumBreakoutStrategy(Strategy):
             rsi_max_bear = self.get_param("rsi_max_bearish", 45)
             rsi_len = self.get_param("rsi_length", 14)
             volume_mult = self.get_param("volume_multiplier", 1.5)
+            adx_threshold = self.get_param("adx_threshold", 25)
             atr_mult = self.get_param("atr_multiplier", 1.5)
             atr_len = self.get_param("atr_length", 14)
+
+            # Instrument-specific overrides
+            if self.instrument == "NATGASMINI":
+                volume_mult = 1.8
+            elif self.instrument == "MIDCPNIFTY":
+                volume_mult = 2.0
 
             # Calculate indicators
             df_15["RSI"] = RSIIndicator(close=df_15["close"], window=rsi_len).rsi()
@@ -428,8 +564,8 @@ class MomentumBreakoutStrategy(Strategy):
                 else False
             )
 
-            # ADX filter: Only allow signals if trend strength is sufficient (ADX > 25)
-            adx_confirmed = adx_val > 25
+            # ADX filter: Only allow signals if trend strength is sufficient (ADX > threshold)
+            adx_confirmed = adx_val > adx_threshold
 
             signal = None
             signal_strength = 0
@@ -439,19 +575,30 @@ class MomentumBreakoutStrategy(Strategy):
             upper_breakout = recent_high * (1 + breakout_pct)
             lower_breakout = recent_low * (1 - breakout_pct)
 
+            # RSI slope check for NATGASMINI
+            rsi_slope_ok = True
+            if self.instrument == "NATGASMINI":
+                prev_rsi = prev.get("RSI", rsi_val)
+                rsi_slope_ok = (
+                    (rsi_val > prev_rsi)
+                    if rsi_val > rsi_min_bull
+                    else (rsi_val < prev_rsi)
+                )
+
             # BULLISH Breakout
             if (
                 price > upper_breakout
                 and rsi_val > rsi_min_bull
                 and volume_confirmed
                 and adx_confirmed
+                and rsi_slope_ok
             ):
                 signal = "BUY"
                 breakout_strength = (price - recent_high) / recent_high * 100
                 signal_strength = breakout_strength + (rsi_val - rsi_min_bull)
                 if avg_volume > 0:
                     signal_strength += (current_volume / avg_volume - 1) * 20
-                # Calculate ATR-based stop loss for BUY
+                # ATR-based stop loss for BUY
                 stop_loss = price - (atr_val * atr_mult)
 
             # BEARISH Breakout
@@ -460,17 +607,44 @@ class MomentumBreakoutStrategy(Strategy):
                 and rsi_val < rsi_max_bear
                 and volume_confirmed
                 and adx_confirmed
+                and rsi_slope_ok
             ):
                 signal = "SELL"
                 breakout_strength = (recent_low - price) / recent_low * 100
                 signal_strength = breakout_strength + (rsi_max_bear - rsi_val)
                 if avg_volume > 0:
                     signal_strength += (current_volume / avg_volume - 1) * 20
-                # Calculate ATR-based stop loss for SELL
+                # ATR-based stop loss for SELL
                 stop_loss = price + (atr_val * atr_mult)
 
             if signal:
-                return {
+                # Hybrid Dynamic Trailing Stop Loss Logic
+                atr_mult = self.get_param("atr_multiplier", 1.5)
+
+                # Initial SL: 1.5x ATR from entry
+                initial_sl_distance = atr_val * 1.5
+
+                # Activation Point: 1.5x ATR favorable move (1:1 R:R)
+                activation_distance = atr_val * 1.5
+
+                # Dynamic Trailing: 1.5x ATR from highest price after activation
+                trail_distance = atr_val * 1.5
+
+                # Maximum profit cap for indices (1:2.5 R:R)
+                max_profit_mult = None
+                if self.instrument in ["NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY"]:
+                    max_profit_mult = 2.5  # 1:2.5 R:R cap for indices
+
+                exit_logic = {
+                    "initial_sl_distance": round(initial_sl_distance, 2),
+                    "activation_atr_mult": 1.5,  # 1.5x ATR for activation
+                    "trail_atr_mult": 1.5,  # 1.5x ATR for trailing
+                    "max_profit_mult": max_profit_mult,  # None for commodities, 2.5 for indices
+                    "atr_value": round(atr_val, 2),
+                    "atr_multiplier": atr_mult,
+                }
+
+                result = {
                     "instrument": self.instrument,
                     "signal": signal,
                     "price": price,
@@ -481,15 +655,20 @@ class MomentumBreakoutStrategy(Strategy):
                     "recent_high": recent_high,
                     "recent_low": recent_low,
                     "signal_strength": signal_strength,
-                    "stop_loss": round(stop_loss, 2),
+                    "exit_logic": exit_logic,
                     "strategy": self.name,
                     "df_15": df_15,
                 }
 
+                # Remove old trailing stop logic for MIDCPNIFTY (replaced by hybrid system)
+                # The hybrid system handles all trailing logic now
+
+                return result
+
             return None
 
         except Exception as e:
-            logging.error(f"[{self.name}] Analysis error for {self.instrument}: {e}")
+            self.logger.exception(f"Analysis error for {self.instrument}")
             return None
 
 
@@ -508,21 +687,24 @@ class FinniftySpecificStrategy(Strategy):
     - Sector correlation check with BANKNIFTY EMA50
     - Time filter preventing entries between 11:30 AM - 1:30 PM
     - 1:2 Risk-to-Reward ratio for quick scalps
+    - ATR-based stop loss
 
     Entry Rules:
-    - BUY: Price > EMA50 (60min), Price > VWAP (15min), RSI > 58, BANKNIFTY > EMA50, outside time filter
-    - SELL: Price < EMA50 (60min), Price < VWAP (15min), RSI < 42, outside time filter
+    - BUY: Price > EMA50 (60min), Price > VWAP (15min), RSI > 62, BANKNIFTY > EMA50, outside time filter
+    - SELL: Price < EMA50 (60min), Price < VWAP (15min), RSI < 38, outside time filter
     """
 
     def _set_default_params(self) -> None:
         """Set default parameters for Finnifty specific strategy."""
         defaults = {
-            "rsi_bullish_threshold": 58,
-            "rsi_bearish_threshold": 42,
+            "rsi_bullish_threshold": 62,
+            "rsi_bearish_threshold": 38,
             "rsi_length": 14,
             "ema_length": 50,
             "volume_multiplier": 1.2,
             "volume_window": 20,
+            "atr_multiplier": 1.5,  # ATR multiplier for stop loss
+            "atr_length": 14,
         }
         for key, value in defaults.items():
             if key not in self.params:
@@ -541,12 +723,14 @@ class FinniftySpecificStrategy(Strategy):
                 return None
 
             # Get parameters
-            rsi_bullish = self.get_param("rsi_bullish_threshold", 58)
-            rsi_bearish = self.get_param("rsi_bearish_threshold", 42)
+            rsi_bullish = self.get_param("rsi_bullish_threshold", 62)
+            rsi_bearish = self.get_param("rsi_bearish_threshold", 38)
             rsi_len = self.get_param("rsi_length", 14)
             ema_len = self.get_param("ema_length", 50)
             volume_mult = self.get_param("volume_multiplier", 1.2)
             vol_window = self.get_param("volume_window", 20)
+            atr_mult = self.get_param("atr_multiplier", 1.5)
+            atr_len = self.get_param("atr_length", 14)
 
             # Calculate indicators
             # 1. EMA on 60min
@@ -557,6 +741,13 @@ class FinniftySpecificStrategy(Strategy):
             df_15["RSI"] = RSIIndicator(close=df_15["close"], window=rsi_len).rsi()
             # 3. VWAP (Custom Anchored)
             df_15["VWAP_D"] = calculate_anchored_vwap(df_15)
+            # 4. ATR for stop loss
+            df_15["ATR"] = AverageTrueRange(
+                high=df_15["high"],
+                low=df_15["low"],
+                close=df_15["close"],
+                window=atr_len,
+            ).average_true_range()
             df_15["vol_avg"] = df_15["volume"].rolling(window=vol_window).mean()
 
             trend = df_60.iloc[-2]
@@ -569,6 +760,7 @@ class FinniftySpecificStrategy(Strategy):
             rsi_val = trigger["RSI"]
             ema_val = trend["EMA"]
             trend_close = trend["close"]
+            atr_val = trigger["ATR"]
 
             # Volume confirmation
             volume_confirmed = (
@@ -586,13 +778,12 @@ class FinniftySpecificStrategy(Strategy):
                     banknifty_close = banknifty_df_60.iloc[-2]["close"]
                     banknifty_correlation_ok = banknifty_close > banknifty_ema.iloc[-2]
                 except Exception as e:
-                    logging.warning(
-                        f"[{self.name}] Could not check BANKNIFTY correlation: {e}"
-                    )
+                    self.logger.warning(f"Could not check BANKNIFTY correlation: {e}")
                     banknifty_correlation_ok = True  # Default to allow if check fails
 
             signal = None
             signal_strength = 0
+            stop_loss = 0
 
             # BULLISH Signal
             if (
@@ -608,6 +799,8 @@ class FinniftySpecificStrategy(Strategy):
                 )
                 if avg_volume > 0:
                     signal_strength += (current_volume / avg_volume - 1) * 10
+                # ATR-based stop loss
+                stop_loss = price - (atr_val * atr_mult)
 
             # BEARISH Signal
             elif (
@@ -622,8 +815,36 @@ class FinniftySpecificStrategy(Strategy):
                 )
                 if avg_volume > 0:
                     signal_strength += (current_volume / avg_volume - 1) * 10
+                # ATR-based stop loss
+                stop_loss = price + (atr_val * atr_mult)
 
             if signal:
+                # Hybrid Dynamic Trailing Stop Loss Logic
+                atr_mult = self.get_param("atr_multiplier", 1.5)
+
+                # Initial SL: 1.5x ATR from entry
+                initial_sl_distance = atr_val * 1.5
+
+                # Activation Point: 1.5x ATR favorable move (1:1 R:R)
+                activation_distance = atr_val * 1.5
+
+                # Dynamic Trailing: 1.5x ATR from highest price after activation
+                trail_distance = atr_val * 1.5
+
+                # Maximum profit cap for indices (1:2.5 R:R)
+                max_profit_mult = None
+                if self.instrument in ["NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY"]:
+                    max_profit_mult = 2.5  # 1:2.5 R:R cap for indices
+
+                exit_logic = {
+                    "initial_sl_distance": round(initial_sl_distance, 2),
+                    "activation_atr_mult": 1.5,  # 1.5x ATR for activation
+                    "trail_atr_mult": 1.5,  # 1.5x ATR for trailing
+                    "max_profit_mult": max_profit_mult,  # None for commodities, 2.5 for indices
+                    "atr_value": round(atr_val, 2),
+                    "atr_multiplier": atr_mult,
+                }
+
                 return {
                     "instrument": self.instrument,
                     "signal": signal,
@@ -634,6 +855,7 @@ class FinniftySpecificStrategy(Strategy):
                     "vwap": vwap_val,
                     "ema": ema_val,
                     "signal_strength": signal_strength,
+                    "exit_logic": exit_logic,
                     "strategy": self.name,
                     "df_15": df_15,
                     "risk_reward_ratio": 2.0,  # 1:2 R:R for FINNIFTY scalps
@@ -642,7 +864,7 @@ class FinniftySpecificStrategy(Strategy):
             return None
 
         except Exception as e:
-            logging.error(f"[{self.name}] Analysis error for {self.instrument}: {e}")
+            self.logger.exception(f"Analysis error for {self.instrument}")
             return None
 
 
