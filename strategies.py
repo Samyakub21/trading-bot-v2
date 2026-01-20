@@ -170,10 +170,15 @@ class TrendFollowingStrategy(Strategy):
                 high=df_15["high"], low=df_15["low"], close=df_15["close"], window=14
             ).adx()
             # 5. 200 EMA on 15min for alignment filter
-            df_15["EMA200"] = EMAIndicator(close=df_15["close"], window=200).ema_indicator()
+            df_15["EMA200"] = EMAIndicator(
+                close=df_15["close"], window=200
+            ).ema_indicator()
             # 6. ATR for stop loss
             df_15["ATR"] = AverageTrueRange(
-                high=df_15["high"], low=df_15["low"], close=df_15["close"], window=atr_len
+                high=df_15["high"],
+                low=df_15["low"],
+                close=df_15["close"],
+                window=atr_len,
             ).average_true_range()
             df_15["vol_avg"] = df_15["volume"].rolling(window=vol_window).mean()
 
@@ -246,21 +251,21 @@ class TrendFollowingStrategy(Strategy):
             if signal:
                 # Hybrid Dynamic Trailing Stop Loss Logic
                 atr_mult = self.get_param("atr_multiplier", 1.5)
-                
+
                 # Initial SL: 1.5x ATR from entry
                 initial_sl_distance = atr_val * 1.5
-                
+
                 # Activation Point: 1.5x ATR favorable move (1:1 R:R)
                 activation_distance = atr_val * 1.5
-                
+
                 # Dynamic Trailing: 1.5x ATR from highest price after activation
                 trail_distance = atr_val * 1.5
-                
+
                 # Maximum profit cap for indices (1:2.5 R:R)
                 max_profit_mult = None
                 if self.instrument in ["NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY"]:
                     max_profit_mult = 2.5  # 1:2.5 R:R cap for indices
-                
+
                 exit_logic = {
                     "initial_sl_distance": round(initial_sl_distance, 2),
                     "activation_atr_mult": 1.5,  # 1.5x ATR for activation
@@ -269,7 +274,7 @@ class TrendFollowingStrategy(Strategy):
                     "atr_value": round(atr_val, 2),
                     "atr_multiplier": atr_mult,
                 }
-                
+
                 return {
                     "instrument": self.instrument,
                     "signal": signal,
@@ -290,11 +295,15 @@ class TrendFollowingStrategy(Strategy):
             # Log rejection reasons
             reasons = []
             if not volume_confirmed:
-                reasons.append(f"Volume too low ({current_volume:.0f} < {avg_volume * volume_mult:.0f})")
+                reasons.append(
+                    f"Volume too low ({current_volume:.0f} < {avg_volume * volume_mult:.0f})"
+                )
             if not adx_confirmed:
                 reasons.append(f"ADX too low ({adx_val:.1f} < {adx_threshold})")
             if not alignment_confirmed:
-                reasons.append(f"Price below 200EMA alignment ({price:.2f} < {ema200_val:.2f})")
+                reasons.append(
+                    f"Price below 200EMA alignment ({price:.2f} < {ema200_val:.2f})"
+                )
 
             # Check trend and price conditions
             bullish_trend = trend_close > ema_val
@@ -304,17 +313,23 @@ class TrendFollowingStrategy(Strategy):
             bullish_rsi = rsi_val > rsi_bullish
             bearish_rsi = rsi_val < rsi_bearish
 
-            if not (bullish_trend and bullish_price and bullish_rsi) and not (bearish_trend and bearish_price and bearish_rsi):
+            if not (bullish_trend and bullish_price and bullish_rsi) and not (
+                bearish_trend and bearish_price and bearish_rsi
+            ):
                 if not bullish_trend and not bearish_trend:
                     reasons.append("No clear trend direction")
                 elif bullish_trend:
                     if not bullish_price:
-                        reasons.append(f"Price not above VWAP ({trigger['close']:.2f} <= {vwap_val:.2f})")
+                        reasons.append(
+                            f"Price not above VWAP ({trigger['close']:.2f} <= {vwap_val:.2f})"
+                        )
                     if not bullish_rsi:
                         reasons.append(f"RSI too low ({rsi_val:.1f} <= {rsi_bullish})")
                 elif bearish_trend:
                     if not bearish_price:
-                        reasons.append(f"Price not below VWAP ({trigger['close']:.2f} >= {vwap_val:.2f})")
+                        reasons.append(
+                            f"Price not below VWAP ({trigger['close']:.2f} >= {vwap_val:.2f})"
+                        )
                     if not bearish_rsi:
                         reasons.append(f"RSI too high ({rsi_val:.1f} >= {rsi_bearish})")
 
@@ -564,7 +579,11 @@ class MomentumBreakoutStrategy(Strategy):
             rsi_slope_ok = True
             if self.instrument == "NATGASMINI":
                 prev_rsi = prev.get("RSI", rsi_val)
-                rsi_slope_ok = (rsi_val > prev_rsi) if rsi_val > rsi_min_bull else (rsi_val < prev_rsi)
+                rsi_slope_ok = (
+                    (rsi_val > prev_rsi)
+                    if rsi_val > rsi_min_bull
+                    else (rsi_val < prev_rsi)
+                )
 
             # BULLISH Breakout
             if (
@@ -601,21 +620,21 @@ class MomentumBreakoutStrategy(Strategy):
             if signal:
                 # Hybrid Dynamic Trailing Stop Loss Logic
                 atr_mult = self.get_param("atr_multiplier", 1.5)
-                
+
                 # Initial SL: 1.5x ATR from entry
                 initial_sl_distance = atr_val * 1.5
-                
+
                 # Activation Point: 1.5x ATR favorable move (1:1 R:R)
                 activation_distance = atr_val * 1.5
-                
+
                 # Dynamic Trailing: 1.5x ATR from highest price after activation
                 trail_distance = atr_val * 1.5
-                
+
                 # Maximum profit cap for indices (1:2.5 R:R)
                 max_profit_mult = None
                 if self.instrument in ["NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY"]:
                     max_profit_mult = 2.5  # 1:2.5 R:R cap for indices
-                
+
                 exit_logic = {
                     "initial_sl_distance": round(initial_sl_distance, 2),
                     "activation_atr_mult": 1.5,  # 1.5x ATR for activation
@@ -624,7 +643,7 @@ class MomentumBreakoutStrategy(Strategy):
                     "atr_value": round(atr_val, 2),
                     "atr_multiplier": atr_mult,
                 }
-                
+
                 result = {
                     "instrument": self.instrument,
                     "signal": signal,
@@ -724,7 +743,10 @@ class FinniftySpecificStrategy(Strategy):
             df_15["VWAP_D"] = calculate_anchored_vwap(df_15)
             # 4. ATR for stop loss
             df_15["ATR"] = AverageTrueRange(
-                high=df_15["high"], low=df_15["low"], close=df_15["close"], window=atr_len
+                high=df_15["high"],
+                low=df_15["low"],
+                close=df_15["close"],
+                window=atr_len,
             ).average_true_range()
             df_15["vol_avg"] = df_15["volume"].rolling(window=vol_window).mean()
 
@@ -756,9 +778,7 @@ class FinniftySpecificStrategy(Strategy):
                     banknifty_close = banknifty_df_60.iloc[-2]["close"]
                     banknifty_correlation_ok = banknifty_close > banknifty_ema.iloc[-2]
                 except Exception as e:
-                    self.logger.warning(
-                        f"Could not check BANKNIFTY correlation: {e}"
-                    )
+                    self.logger.warning(f"Could not check BANKNIFTY correlation: {e}")
                     banknifty_correlation_ok = True  # Default to allow if check fails
 
             signal = None
@@ -801,21 +821,21 @@ class FinniftySpecificStrategy(Strategy):
             if signal:
                 # Hybrid Dynamic Trailing Stop Loss Logic
                 atr_mult = self.get_param("atr_multiplier", 1.5)
-                
+
                 # Initial SL: 1.5x ATR from entry
                 initial_sl_distance = atr_val * 1.5
-                
+
                 # Activation Point: 1.5x ATR favorable move (1:1 R:R)
                 activation_distance = atr_val * 1.5
-                
+
                 # Dynamic Trailing: 1.5x ATR from highest price after activation
                 trail_distance = atr_val * 1.5
-                
+
                 # Maximum profit cap for indices (1:2.5 R:R)
                 max_profit_mult = None
                 if self.instrument in ["NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY"]:
                     max_profit_mult = 2.5  # 1:2.5 R:R cap for indices
-                
+
                 exit_logic = {
                     "initial_sl_distance": round(initial_sl_distance, 2),
                     "activation_atr_mult": 1.5,  # 1.5x ATR for activation
@@ -824,7 +844,7 @@ class FinniftySpecificStrategy(Strategy):
                     "atr_value": round(atr_val, 2),
                     "atr_multiplier": atr_mult,
                 }
-                
+
                 return {
                     "instrument": self.instrument,
                     "signal": signal,

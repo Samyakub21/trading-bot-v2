@@ -330,12 +330,16 @@ def auto_fix_mismatch(
             # Update local state to match broker position
             active_trade["status"] = True
             active_trade["instrument"] = None  # Will be determined from position data
-            active_trade["type"] = "LONG" if broker_pos.position_type == "LONG" else "SHORT"
+            active_trade["type"] = (
+                "LONG" if broker_pos.position_type == "LONG" else "SHORT"
+            )
             active_trade["future_entry"] = broker_pos.average_price
             active_trade["entry_price"] = broker_pos.average_price
             active_trade["entry"] = broker_pos.average_price
             active_trade["option_entry"] = broker_pos.average_price
-            active_trade["initial_sl"] = broker_pos.average_price * 0.95  # Conservative SL
+            active_trade["initial_sl"] = (
+                broker_pos.average_price * 0.95
+            )  # Conservative SL
             active_trade["current_sl_level"] = broker_pos.average_price * 0.95
             active_trade["sl"] = broker_pos.average_price * 0.95
             active_trade["step_level"] = 0
@@ -344,7 +348,9 @@ def auto_fix_mismatch(
             active_trade["entry_time"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             active_trade["lot_size"] = broker_pos.quantity
             active_trade["exchange_segment_str"] = broker_pos.exchange_segment
-            active_trade["atm_strike"] = 0  # Unknown, will be parsed from symbol if needed
+            active_trade["atm_strike"] = (
+                0  # Unknown, will be parsed from symbol if needed
+            )
 
             save_state(active_trade)
 
