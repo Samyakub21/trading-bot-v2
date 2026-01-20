@@ -27,6 +27,7 @@ INSTRUMENTS = {
             "rsi_bearish_threshold": 42,
             "volume_multiplier": 1.2,
             "ema_length": 50,
+            "atr_multiplier": 2.0,  # Higher ATR multiplier for commodity volatility
         },
     },
     # "NATURALGAS": {
@@ -70,10 +71,10 @@ INSTRUMENTS = {
         "strategy_params": {
             "rsi_min_bullish": 55,
             "rsi_max_bearish": 45,
-            "volume_multiplier": 1.5,  # Need strong volume for NatGas Mini
+            "volume_multiplier": 1.8,  # Updated for NATGASMINI
             "lookback_period": 15,
             "breakout_threshold": 0.008,  # 0.8% breakout threshold
-            "atr_multiplier": 1.5,  # 1.5x ATR for stop loss
+            "atr_multiplier": 2.0,  # Higher ATR multiplier for commodity volatility
         },
     },
     # "GOLD": {
@@ -126,7 +127,7 @@ INSTRUMENTS = {
         "exchange_segment_int": 2,  # marketfeed.NSE_FNO
         "exchange_segment_str": "NSE_FNO",  # V2 API: NSE_FNO for F&O
         "future_id": "13",  # Nifty underlying ID
-        "lot_size": 25,
+        "lot_size": 75,
         "strike_step": 50,
         "expiry_date": "2026-01-16",
         "instrument_type": "INDEX",  # V2 API: INDEX for index underlying
@@ -141,6 +142,7 @@ INSTRUMENTS = {
             "rsi_bearish_threshold": 45,
             "volume_multiplier": 1.2,
             "ema_length": 50,
+            "atr_multiplier": 1.5,  # Standard ATR multiplier for indices
         },
     },
     "BANKNIFTY": {
@@ -148,7 +150,7 @@ INSTRUMENTS = {
         "exchange_segment_int": 2,  # marketfeed.NSE_FNO
         "exchange_segment_str": "NSE_FNO",  # V2 API: NSE_FNO for F&O
         "future_id": "25",  # BankNifty underlying ID
-        "lot_size": 15,
+        "lot_size": 30,
         "strike_step": 100,
         "expiry_date": "2026-01-15",
         "instrument_type": "INDEX",  # V2 API: INDEX for index underlying
@@ -163,6 +165,7 @@ INSTRUMENTS = {
             "rsi_bearish_threshold": 42,
             "volume_multiplier": 1.3,  # BankNifty needs volume confirmation
             "ema_length": 50,
+            "atr_multiplier": 1.5,  # Standard ATR multiplier for indices
         },
     },
     "MIDCPNIFTY": {
@@ -183,8 +186,9 @@ INSTRUMENTS = {
         "strategy_params": {
             "rsi_min_bullish": 62,
             "rsi_max_bearish": 38,
-            "volume_multiplier": 1.5,
+            "volume_multiplier": 2.0,  # Updated for MIDCPNIFTY
             "lookback_period": 20,
+            "atr_multiplier": 1.5,  # Standard ATR multiplier for indices
         },
     },
     "FINNIFTY": {
@@ -203,10 +207,11 @@ INSTRUMENTS = {
         # Per-instrument strategy parameters (FINNIFTY - dedicated strategy)
         "strategy": "FinniftySpecific",
         "strategy_params": {
-            "rsi_bullish_threshold": 58,
-            "rsi_bearish_threshold": 42,
+            "rsi_bullish_threshold": 62,
+            "rsi_bearish_threshold": 38,
             "volume_multiplier": 1.2,
             "ema_length": 50,
+            "atr_multiplier": 1.5,  # Standard ATR multiplier for indices
         },
     },
 }

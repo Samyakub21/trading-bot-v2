@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # =============================================================================
 # UTILITY FUNCTIONS - State Management, Alerts, Helpers
 # =============================================================================
@@ -7,6 +8,8 @@ import json
 import logging
 import requests  # type: ignore
 import pandas as pd
+import time
+import functools
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -28,8 +31,103 @@ from instruments import (
 )
 
 # =============================================================================
-# CONFIGURATION (loaded from config.py - supports env vars and config files)
+# API RESILIENCE DECORATOR
 # =============================================================================
+def robust_api_call(max_retries: int = 3, base_delay: float = 1.0, backoff_factor: float = 2.0):
+    """
+    Decorator for robust API calls with exponential backoff and rate limit handling.
+
+    Args:
+        max_retries: Maximum number of retry attempts
+        base_delay: Base delay in seconds for exponential backoff
+        backoff_factor: Factor to multiply delay by on each retry
+    """
+    def decorator(func):
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            last_exception = None
+            delay = base_delay
+
+            for attempt in range(max_retries + 1):
+                try:
+                    return func(*args, **kwargs)
+                except requests.exceptions.HTTPError as e:
+                    # Handle rate limiting (HTTP 429)
+                    if hasattr(e.response, 'status_code') and e.response.status_code == 429:
+                        if attempt < max_retries:
+                            wait_time = 60  # Fixed 60-second wait for rate limits
+                            logging.warning(f"⚠️ Rate limit hit (429) for {func.__name__}. Waiting {wait_time}s before retry...")
+                            time.sleep(wait_time)
+                            continue
+                        else:
+                            logging.error(f"❌ Rate limit persists after {max_retries} retries for {func.__name__}")
+                            raise
+                    else:
+                        # Other HTTP errors - don't retry
+                        raise
+                except (requests.exceptions.ConnectionError, requests.exceptions.Timeout, requests.exceptions.RequestException) as e:
+                    last_exception = e
+                    if attempt < max_retries:
+                        logging.warning(f"⚠️ API call failed for {func.__name__} (attempt {attempt + 1}/{max_retries + 1}): {e}. Retrying in {delay:.1f}s...")
+                        time.sleep(delay)
+                        delay *= backoff_factor
+                    else:
+                        logging.error(f"❌ API call failed permanently for {func.__name__} after {max_retries + 1} attempts")
+                        raise last_exception
+                except Exception as e:
+                    # For non-request exceptions, don't retry
+                    logging.error(f"❌ Unexpected error in {func.__name__}: {e}")
+                    raise
+
+            # This should never be reached, but just in case
+            if last_exception:
+                raise last_exception
+
+        return wrapper
+    return decorator
+
+# =============================================================================
+# DHAN API WRAPPERS WITH RESILIENCE
+# =============================================================================
+@robust_api_call()
+def dhan_intraday_minute_data(dhan_client, **kwargs):
+    """Wrapper for dhan.intraday_minute_data with retry logic"""
+    return dhan_client.intraday_minute_data(**kwargs)
+
+@robust_api_call()
+def dhan_place_order(dhan_client, **kwargs):
+    """Wrapper for dhan.place_order with retry logic"""
+    return dhan_client.place_order(**kwargs)
+
+@robust_api_call()
+def dhan_get_positions(dhan_client):
+    """Wrapper for dhan.get_positions with retry logic"""
+    return dhan_client.get_positions()
+
+@robust_api_call()
+def dhan_get_order_by_id(dhan_client, order_id):
+    """Wrapper for dhan.get_order_by_id with retry logic"""
+    return dhan_client.get_order_by_id(order_id)
+
+@robust_api_call()
+def dhan_get_fund_limits(dhan_client):
+    """Wrapper for dhan.get_fund_limits with retry logic"""
+    return dhan_client.get_fund_limits()
+
+@robust_api_call()
+def dhan_quote_data(dhan_client, instruments_dict):
+    """Wrapper for dhan.quote_data with retry logic"""
+    return dhan_client.quote_data(instruments_dict)
+
+@robust_api_call()
+def dhan_cancel_order(dhan_client, order_id):
+    """Wrapper for dhan.cancel_order with retry logic"""
+    return dhan_client.cancel_order(order_id)
+
+@robust_api_call()
+def dhan_option_chain(dhan_client, **kwargs):
+    """Wrapper for dhan.option_chain with retry logic"""
+    return dhan_client.option_chain(**kwargs)
 TELEGRAM_TOKEN = config.TELEGRAM_TOKEN
 TELEGRAM_CHAT_ID = config.TELEGRAM_CHAT_ID
 
@@ -83,6 +181,39 @@ def send_alert(msg: str) -> None:
         logging.debug("Telegram alert timeout")
     except Exception as e:
         logging.debug(f"Telegram alert error: {e}")
+
+def send_high_priority_alert(msg: str) -> None:
+    """Send high-priority Telegram alert for critical recovery failures"""
+    try:
+        # Send to main channel with high priority formatting
+        alert_msg = f"🚨 **CRITICAL ALERT** 🚨\n{msg}"
+        response = requests.get(
+            f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",
+            params={"chat_id": TELEGRAM_CHAT_ID, "text": alert_msg, "parse_mode": "Markdown"},
+            timeout=10,
+        )
+        if response.status_code != 200:
+            logging.error(f"High-priority Telegram alert failed: {response.status_code}")
+    except requests.exceptions.Timeout:
+        logging.error("High-priority Telegram alert timeout")
+    except Exception as e:
+        logging.error(f"High-priority Telegram alert error: {e}")
+
+def send_high_priority_alert(msg: str) -> None:
+    """Send high-priority Telegram alert for critical recovery failures"""
+    alert_msg = f"🚨 **HIGH PRIORITY ALERT**\n{msg}"
+    try:
+        response = requests.get(
+            f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",
+            params={"chat_id": TELEGRAM_CHAT_ID, "text": alert_msg, "parse_mode": "Markdown"},
+            timeout=10,
+        )
+        if response.status_code != 200:
+            logging.error(f"High-priority alert failed: {response.status_code}")
+    except requests.exceptions.Timeout:
+        logging.error("High-priority alert timeout")
+    except Exception as e:
+        logging.error(f"High-priority alert error: {e}")
 
 
 def calculate_resistance_support_zones(
