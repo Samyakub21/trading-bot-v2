@@ -161,10 +161,14 @@ def get_instrument_data(
                 break  # Success, exit retry loop
             except Exception as e:
                 if attempt < max_retries - 1:
-                    logger.warning(f"⚠️ Data fetch attempt {attempt + 1} failed for {log_context}: {e}. Retrying in {retry_delay}s...")
+                    logger.warning(
+                        f"⚠️ Data fetch attempt {attempt + 1} failed for {log_context}: {e}. Retrying in {retry_delay}s..."
+                    )
                     time.sleep(retry_delay)
                 else:
-                    logger.error(f"❌ Data fetch failed permanently for {log_context} after {max_retries} attempts: {e}")
+                    logger.error(
+                        f"❌ Data fetch failed permanently for {log_context} after {max_retries} attempts: {e}"
+                    )
                     raise
 
         if data.get("status") == "failure":
@@ -212,7 +216,9 @@ def get_instrument_data(
         latest_timestamp = df.index.max()
         time_diff = datetime.now() - latest_timestamp.to_pydatetime()
         if time_diff.total_seconds() > 300:  # 5 minutes
-            logger.warning(f"⚠️ Stale data detected for {log_context}: latest tick is {time_diff.total_seconds()/60:.1f} minutes old. Skipping analysis.")
+            logger.warning(
+                f"⚠️ Stale data detected for {log_context}: latest tick is {time_diff.total_seconds()/60:.1f} minutes old. Skipping analysis."
+            )
             return None, None
 
         if cache_key in _DATA_CACHE:
@@ -461,7 +467,9 @@ def check_margin_available(
 
                 if option_ltp > 0:
                     required = option_ltp * lot_size * 1.05
-                    logger.info(f"MARGIN [UNKNOWN]: Required ₹{required:.0f} | Available ₹{available_balance:.0f} | Status: {'OK' if available_balance >= required else 'INSUFFICIENT'}")
+                    logger.info(
+                        f"MARGIN [UNKNOWN]: Required ₹{required:.0f} | Available ₹{available_balance:.0f} | Status: {'OK' if available_balance >= required else 'INSUFFICIENT'}"
+                    )
                     if available_balance >= required:
                         return True, f"Margin OK: {available_balance}"
                     else:
@@ -1163,7 +1171,9 @@ def check_margin_available(
 
                 if option_ltp > 0:
                     required = option_ltp * lot_size * 1.05
-                    logger.info(f"MARGIN [UNKNOWN]: Required ₹{required:.0f} | Available ₹{available_balance:.0f} | Status: {'OK' if available_balance >= required else 'INSUFFICIENT'}")
+                    logger.info(
+                        f"MARGIN [UNKNOWN]: Required ₹{required:.0f} | Available ₹{available_balance:.0f} | Status: {'OK' if available_balance >= required else 'INSUFFICIENT'}"
+                    )
                     if available_balance >= required:
                         return True, f"Margin OK: {available_balance}"
                     required = option_ltp * lot_size * 1.05
@@ -1398,7 +1408,9 @@ def execute_trade_entry(
             positions_data = positions_response.get("data", [])
             for position in positions_data:
                 if position.get("security_id") == opt_id:
-                    logger.warning(f"⚠️ Position already exists for {option_name} at broker. Skipping duplicate trade entry.")
+                    logger.warning(
+                        f"⚠️ Position already exists for {option_name} at broker. Skipping duplicate trade entry."
+                    )
                     send_high_priority_alert(
                         f"🚨 **DUPLICATE TRADE PREVENTION**\n"
                         f"Attempted to enter {option_name} but position already exists at broker.\n"
@@ -1407,7 +1419,9 @@ def execute_trade_entry(
                     )
                     return False
     except Exception as e:
-        logger.error(f"❌ Failed to check existing positions before entry for {option_name}: {e}")
+        logger.error(
+            f"❌ Failed to check existing positions before entry for {option_name}: {e}"
+        )
         # Continue with trade entry but log the issue
         send_high_priority_alert(
             f"🚨 **POSITION CHECK FAILED**\n"
@@ -1867,7 +1881,9 @@ def run_scanner(active_trade: Dict[str, Any], active_instrument: str) -> None:
                         cast(str, inst["market_start"]), cast(str, inst["market_end"])
                     )
                     if not market_open:
-                        logger.info(f"SKIP [{active_instrument}]: Market closed - {market_msg}")
+                        logger.info(
+                            f"SKIP [{active_instrument}]: Market closed - {market_msg}"
+                        )
                         time.sleep(60)
                         continue
 
@@ -1875,7 +1891,9 @@ def run_scanner(active_trade: Dict[str, Any], active_instrument: str) -> None:
                         cast(str, inst["no_new_trade_after"])
                     )
                     if not can_trade:
-                        logger.info(f"SKIP [{active_instrument}]: Trading restricted - {trade_msg}")
+                        logger.info(
+                            f"SKIP [{active_instrument}]: Trading restricted - {trade_msg}"
+                        )
                         time.sleep(60)
                         continue
 

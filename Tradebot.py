@@ -86,9 +86,7 @@ def setup_logging():
 
     # File handler (DEBUG level with rotation)
     file_handler = RotatingFileHandler(
-        LOG_FILE_PATH,
-        maxBytes=LOG_FILE_MAX_BYTES,
-        backupCount=LOG_FILE_BACKUP_COUNT
+        LOG_FILE_PATH, maxBytes=LOG_FILE_MAX_BYTES, backupCount=LOG_FILE_BACKUP_COUNT
     )
     file_handler.setLevel(logging.DEBUG)
     file_handler.setFormatter(formatter)
