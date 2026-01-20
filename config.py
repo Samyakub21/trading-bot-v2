@@ -12,6 +12,7 @@ from typing import Any, Dict, Optional
 
 try:
     from dotenv import load_dotenv
+
     DOTENV_AVAILABLE = True
 except ImportError:
     DOTENV_AVAILABLE = False
@@ -146,9 +147,13 @@ class Config:
             if not self.TELEGRAM_TOKEN:
                 self.TELEGRAM_TOKEN = creds.get("TELEGRAM_TOKEN", self.TELEGRAM_TOKEN)
             if not self.TELEGRAM_CHAT_ID:
-                self.TELEGRAM_CHAT_ID = creds.get("TELEGRAM_CHAT_ID", self.TELEGRAM_CHAT_ID)
+                self.TELEGRAM_CHAT_ID = creds.get(
+                    "TELEGRAM_CHAT_ID", self.TELEGRAM_CHAT_ID
+                )
             if not self.SIGNAL_BOT_TOKEN:
-                self.SIGNAL_BOT_TOKEN = creds.get("SIGNAL_BOT_TOKEN", self.SIGNAL_BOT_TOKEN)
+                self.SIGNAL_BOT_TOKEN = creds.get(
+                    "SIGNAL_BOT_TOKEN", self.SIGNAL_BOT_TOKEN
+                )
 
             # --- Email Config: Prioritize env vars and Docker secrets over JSON ---
             # Check environment variables first (including .env file)

@@ -577,7 +577,9 @@ def get_instrument_data(
 
         if data.get("status") == "failure":
             error_msg = data.get("remarks", data.get("errorMessage", "Unknown error"))
-            logging.error(f"Data Error for {log_context} (future_id: {future_id}): API failure - {error_msg}")
+            logging.error(
+                f"Data Error for {log_context} (future_id: {future_id}): API failure - {error_msg}"
+            )
             return None, None
 
         # V2 API returns data in arrays format: open, high, low, close, volume, timestamp
