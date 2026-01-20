@@ -1,6 +1,7 @@
 # Credentials - NEVER COMMIT
 credentials.json
 trading_config.json
+.env
 
 # Data folder - runtime files
 data/

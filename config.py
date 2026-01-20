@@ -10,6 +10,12 @@ import logging
 from pathlib import Path
 from typing import Any, Dict, Optional
 
+try:
+    from dotenv import load_dotenv
+    DOTENV_AVAILABLE = True
+except ImportError:
+    DOTENV_AVAILABLE = False
+
 
 # =============================================================================
 # DEFAULT TRADING CONFIGURATION
@@ -70,6 +76,10 @@ class Config:
     """Configuration class that loads credentials and trading params from environment or config files"""
 
     def __init__(self):
+        # Load .env file if available
+        if DOTENV_AVAILABLE:
+            load_dotenv()
+
         # --- Credentials ---
         self.CLIENT_ID = os.getenv("DHAN_CLIENT_ID")
         self.ACCESS_TOKEN = os.getenv("DHAN_ACCESS_TOKEN")
@@ -118,7 +128,7 @@ class Config:
         self._trading_config = self._load_trading_config()
 
     def _load_credentials_from_file(self):
-        """Load credentials from credentials.json file"""
+        """Load credentials from credentials.json file (fallback for non-sensitive data)"""
         credentials_file = Path(__file__).parent / "credentials.json"
 
         if not credentials_file.exists():
@@ -128,15 +138,20 @@ class Config:
             with open(credentials_file, "r") as f:
                 creds = json.load(f)
 
-            # Load Core Credentials
-            self.CLIENT_ID = creds.get("CLIENT_ID", self.CLIENT_ID)
-            self.ACCESS_TOKEN = creds.get("ACCESS_TOKEN", self.ACCESS_TOKEN)
-            self.TELEGRAM_TOKEN = creds.get("TELEGRAM_TOKEN", self.TELEGRAM_TOKEN)
-            self.TELEGRAM_CHAT_ID = creds.get("TELEGRAM_CHAT_ID", self.TELEGRAM_CHAT_ID)
-            self.SIGNAL_BOT_TOKEN = creds.get("SIGNAL_BOT_TOKEN", self.SIGNAL_BOT_TOKEN)
+            # Load Core Credentials (only if not already set from env)
+            if not self.CLIENT_ID:
+                self.CLIENT_ID = creds.get("CLIENT_ID", self.CLIENT_ID)
+            if not self.ACCESS_TOKEN:
+                self.ACCESS_TOKEN = creds.get("ACCESS_TOKEN", self.ACCESS_TOKEN)
+            if not self.TELEGRAM_TOKEN:
+                self.TELEGRAM_TOKEN = creds.get("TELEGRAM_TOKEN", self.TELEGRAM_TOKEN)
+            if not self.TELEGRAM_CHAT_ID:
+                self.TELEGRAM_CHAT_ID = creds.get("TELEGRAM_CHAT_ID", self.TELEGRAM_CHAT_ID)
+            if not self.SIGNAL_BOT_TOKEN:
+                self.SIGNAL_BOT_TOKEN = creds.get("SIGNAL_BOT_TOKEN", self.SIGNAL_BOT_TOKEN)
 
-            # --- NEW: Load Email Config from JSON ---
-            # We inject these into os.environ so eod_report.py (which uses os.getenv) can find them
+            # --- Email Config: Prioritize env vars and Docker secrets over JSON ---
+            # Check environment variables first (including .env file)
             email_vars = [
                 "SMTP_SERVER",
                 "SMTP_PORT",
@@ -146,8 +161,26 @@ class Config:
             ]
 
             for var in email_vars:
+                # First check environment variable
+                env_value = os.getenv(var)
+                if env_value:
+                    os.environ[var] = str(env_value)
+                    continue
+
+                # Then check Docker secrets (/run/secrets/)
+                secret_file = Path("/run/secrets") / var.lower()
+                if secret_file.exists():
+                    try:
+                        with open(secret_file, "r") as f:
+                            secret_value = f.read().strip()
+                        if secret_value:
+                            os.environ[var] = secret_value
+                            continue
+                    except Exception:
+                        pass
+
+                # Finally fall back to credentials.json (for backward compatibility)
                 if var in creds and creds[var]:
-                    # Only set if it's not empty, ensuring string format
                     os.environ[var] = str(creds[var])
 
         except Exception as e:

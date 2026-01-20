@@ -8,6 +8,7 @@ __pycache__/
 # Virtual environments
 env/
 venv/
+# Environment files (may contain sensitive data)
 .env
 .env.*
 
@@ -37,6 +38,7 @@ data/
 pip-wheel-metadata/
 
 # Docker
+# Exclude root-level Docker files (actual files are in docker/ directory)
 Dockerfile
 docker-compose.yml
 

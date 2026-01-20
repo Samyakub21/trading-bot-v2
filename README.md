@@ -165,6 +165,71 @@ sudo systemctl status tradingbot
 sudo journalctl -u tradingbot -f
 ```
 
+## Docker Deployment (Recommended for Production)
+
+### Security-First Approach
+
+For production Docker deployments, avoid mounting `credentials.json` directly. Instead, use environment variables or Docker secrets for sensitive data like email passwords.
+
+**Note:** `credentials.json` is excluded from Docker builds (via `.dockerignore`) and is not needed for Docker deployments. Use the `.env` file approach instead for all credentials.
+
+### Option 1: Using .env File
+
+1. Copy the example file:
+
+```bash
+cp .env.example .env
+```
+
+2. Edit `.env` with your actual credentials:
+
+```bash
+# Core credentials
+DHAN_CLIENT_ID=your_client_id
+DHAN_ACCESS_TOKEN=your_access_token
+TELEGRAM_TOKEN=your_telegram_token
+TELEGRAM_CHAT_ID=your_chat_id
+SIGNAL_BOT_TOKEN=your_signal_bot_token
+
+# Email configuration (sensitive)
+SMTP_SERVER=smtp.gmail.com
+SMTP_PORT=587
+EMAIL_ADDRESS=your_email@gmail.com
+EMAIL_PASSWORD=your_app_password
+EMAIL_RECIPIENT=recipient@example.com
+```
+
+3. Build and run with Docker Compose:
+
+```bash
+cd docker/
+docker-compose up --build
+```
+
+The `.env` file is automatically loaded and excluded from Docker build context for security.
+
+### Option 2: Using Docker Secrets
+
+For enhanced security in swarm deployments:
+
+1. Create secret files:
+
+```bash
+echo "your_app_password" | docker secret create email_password -
+echo "your_access_token" | docker secret create dhan_access_token -
+# ... create other secrets
+```
+
+2. Update `docker-compose.yml` to use secrets instead of environment variables.
+
+### Option 3: Environment Variables Only
+
+Set all variables as environment variables when running containers:
+
+```bash
+docker run -e DHAN_CLIENT_ID=... -e EMAIL_PASSWORD=... your_image
+```
+
 ## Security Best Practices
 
 1. **Never commit credentials to git** - `.gitignore` prevents this

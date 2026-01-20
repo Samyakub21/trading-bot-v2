@@ -23,8 +23,7 @@ RUN pip install --upgrade pip && \
 COPY . .
 
 # Create directory for logs, data, and reports to allow volume mounting with permissions
-RUN mkdir -p logs data reports && \
-    touch bot.log
+RUN mkdir -p logs data reports
 
 # Create a non-root user for security and change ownership
 RUN adduser --disabled-password --gecos '' trader && \
