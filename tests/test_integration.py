@@ -11,7 +11,6 @@ import time
 import json
 import json
 
-
 mock_creds = {"client_id": "test_client", "access_token": "test_token"}
 
 mock_config = {

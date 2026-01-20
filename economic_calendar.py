@@ -52,29 +52,29 @@ HIGH_IMPACT_EVENTS = {
         "EIA Natural Gas Storage Change",
         "Baker Hughes Gas Rig Count",
     ],
-    "GOLD": [
-        "Fed Interest Rate Decision",
-        "FOMC Statement",
-        "FOMC Minutes",
-        "Non-Farm Payrolls",
-        "NFP",
-        "Unemployment Rate",
-        "CPI",
-        "Core CPI",
-        "PPI",
-        "Core PPI",
-        "Initial Jobless Claims",
-        "GDP",
-        "Retail Sales",
-    ],
-    "SILVER": [
-        "Fed Interest Rate Decision",
-        "FOMC Statement",
-        "Non-Farm Payrolls",
-        "CPI",
-        "Core CPI",
-        "Industrial Production",
-    ],
+    # "GOLD": [
+    #    "Fed Interest Rate Decision",
+    #    "FOMC Statement",
+    #    "FOMC Minutes",
+    #    "Non-Farm Payrolls",
+    #    "NFP",
+    #    "Unemployment Rate",
+    #    "CPI",
+    #    "Core CPI",
+    #    "PPI",
+    #    "Core PPI",
+    #    "Initial Jobless Claims",
+    #    "GDP",
+    #    "Retail Sales",
+    # ],
+    # "SILVER": [
+    #    "Fed Interest Rate Decision",
+    #    "FOMC Statement",
+    #    "Non-Farm Payrolls",
+    #    "CPI",
+    #    "Core CPI",
+    #    "Industrial Production",
+    # ],
     "NIFTY": [
         "RBI Interest Rate Decision",
         "RBI Monetary Policy",
@@ -614,7 +614,7 @@ if __name__ == "__main__":
     print(f"\nLoaded {num_events} events")
 
     # Check each instrument
-    for instrument in ["CRUDEOIL", "GOLD", "NIFTY"]:
+    for instrument in ["CRUDEOIL", "NIFTY"]:
         pause, reason = should_pause_trading(instrument)
         status = "🔴 PAUSE" if pause else "🟢 OK"
         print(f"\n{instrument}: {status}")

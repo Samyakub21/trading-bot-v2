@@ -1,0 +1,63 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Virtual environments
+env/
+venv/
+# Environment files (may contain sensitive data)
+.env
+.env.*
+
+# Git
+.git/
+.github/
+
+# IDEs
+.vscode/
+.idea/
+
+# Logs / outputs
+logs/
+reports/
+bot.log
+
+# Data (mount as volumes)
+data/
+*.csv
+*.parquet
+*.pkl
+
+# Caches
+.cache/
+.mypy_cache/
+.pytest_cache/
+pip-wheel-metadata/
+
+# Docker
+# Exclude root-level Docker files (actual files are in docker/ directory)
+Dockerfile
+docker-compose.yml
+
+# OS
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Archives / binaries
+*.zip
+*.tar
+*.tar.gz
+*.whl
+*.exe
+
+# --- SECURITY: EXCLUDE KEYS ---
+credentials.json
+*.pem
+*.key
+*.pub
+id_rsa
+id_dsa

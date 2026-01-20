@@ -7,7 +7,6 @@ from datetime import datetime
 from unittest.mock import patch, MagicMock
 from dataclasses import asdict
 
-
 # =============================================================================
 # FIXTURES
 # =============================================================================
@@ -369,7 +368,7 @@ class TestAutoFixMismatch:
         assert active_trade_with_position["status"] is False
         mock_save.assert_called_once()
 
-    @patch("position_reconciliation.send_alert")
+    @patch("position_reconciliation.send_high_priority_alert")
     def test_auto_fix_broker_only_returns_false(self, mock_alert, empty_trade_state):
         """Should not auto-fix when broker has untracked position"""
         from position_reconciliation import (

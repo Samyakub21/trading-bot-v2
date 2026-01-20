@@ -114,7 +114,7 @@ def find_current_month_future(
     Find the current month's futures contract for an underlying.
 
     Args:
-        underlying: e.g., "CRUDEOIL", "GOLD", "NIFTY"
+        underlying: e.g., "CRUDEOIL", "NIFTY"
         exchange: e.g., "MCX_COMM", "NSE_FNO" (V2 API format)
         contracts: List of contract dictionaries from scrip master
 
@@ -203,7 +203,7 @@ def find_current_month_option_chain(
     Find all options for an underlying with a specific expiry.
 
     Args:
-        underlying: e.g., "CRUDEOIL", "GOLD", "NIFTY"
+        underlying: e.g., "CRUDEOIL", "NIFTY"
         exchange: e.g., "MCX_COMM", "NSE_FNO" (V2 API format)
         contracts: List of contract dictionaries
         expiry_date: Optional specific expiry date
@@ -279,7 +279,7 @@ def get_updated_instrument_config(
     Get updated configuration for an instrument with current month contract.
 
     Args:
-        instrument_key: e.g., "CRUDEOIL", "GOLD"
+        instrument_key: e.g., "CRUDEOIL"
         current_config: Current instrument configuration
 
     Returns:

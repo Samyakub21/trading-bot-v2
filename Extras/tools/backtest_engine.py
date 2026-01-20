@@ -27,7 +27,6 @@ from typing import Any, Dict, List, Optional, Tuple, cast
 from dataclasses import dataclass, field
 from pathlib import Path
 
-
 # =============================================================================
 # DATA CLASSES FOR BACKTEST RESULTS
 # =============================================================================

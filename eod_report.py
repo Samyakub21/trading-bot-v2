@@ -66,22 +66,22 @@ BROKERAGE_COSTS = {
         "sebi": 0.1,
         "stamp": 0.03,
     },
-    "GOLD": {
-        "brokerage": 20,
-        "stt": 0,
-        "exchange_txn": 0.05,
-        "gst": 3.6,
-        "sebi": 0.1,
-        "stamp": 0.03,
-    },
-    "SILVER": {
-        "brokerage": 20,
-        "stt": 0,
-        "exchange_txn": 0.05,
-        "gst": 3.6,
-        "sebi": 0.1,
-        "stamp": 0.03,
-    },
+    # "GOLD": {
+    #    "brokerage": 20,
+    #    "stt": 0,
+    #    "exchange_txn": 0.05,
+    #    "gst": 3.6,
+    #    "sebi": 0.1,
+    #    "stamp": 0.03,
+    # },
+    # "SILVER": {
+    #    "brokerage": 20,
+    #    "stt": 0,
+    #    "exchange_txn": 0.05,
+    #    "gst": 3.6,
+    #    "sebi": 0.1,
+    #    "stamp": 0.03,
+    # },
     "NIFTY": {
         "brokerage": 20,
         "stt": 0.05,
@@ -201,8 +201,7 @@ def generate_html_report(
         result_class = "profit" if pnl > 0 else "loss"
         result_emoji = "✅" if pnl > 0 else "❌"
 
-        trade_rows.append(
-            f"""
+        trade_rows.append(f"""
         <tr class="{result_class}">
             <td>{trade.get('entry_time', 'N/A')[-8:]}</td>
             <td>{trade.get('exit_time', 'N/A')[-8:]}</td>
@@ -216,8 +215,7 @@ def generate_html_report(
             <td class="{result_class}-text">₹{net_pnl:.2f}</td>
             <td>{trade.get('exit_reason', 'N/A')}</td>
         </tr>
-        """
-        )
+        """)
 
     trade_rows_html = (
         "\n".join(trade_rows)

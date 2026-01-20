@@ -34,6 +34,15 @@ from utils import (
     LIMIT_ORDER_BUFFER,
     send_alert,
     send_signal_alert,
+    send_high_priority_alert,
+    dhan_intraday_minute_data,
+    dhan_place_order,
+    dhan_get_positions,
+    dhan_get_order_by_id,
+    dhan_cancel_order,
+    dhan_get_fund_limits,
+    dhan_quote_data,
+    dhan_option_chain,
     save_state,
     get_dynamic_sl,
     check_daily_limits,
@@ -47,6 +56,9 @@ from utils import (
 from contract_updater import load_scrip_master
 import socket_handler
 from state_stores import get_signal_tracker
+
+# Create named logger for scanner
+logger = logging.getLogger("Scanner")
 
 _DATA_CACHE: Dict[str, pd.DataFrame] = {}
 
@@ -63,7 +75,7 @@ try:
 except ImportError:
     STRATEGIES_AVAILABLE = False
     USE_STRATEGY_PATTERN = False
-    logging.warning("strategies.py not found. Using legacy signal analysis.")
+    logger.warning("strategies.py not found. Using legacy signal analysis.")
 
 # =============================================================================
 # ECONOMIC CALENDAR INTEGRATION
@@ -77,7 +89,7 @@ try:
 except ImportError:
     _economic_calendar = None
     ECONOMIC_CALENDAR_AVAILABLE = False
-    logging.info("economic_calendar.py not found. News filtering disabled.")
+    logger.info("economic_calendar.py not found. News filtering disabled.")
 
 # =============================================================================
 # DHAN CLIENT
@@ -131,13 +143,29 @@ def get_instrument_data(
         else:
             from_date = (datetime.now() - timedelta(days=25)).strftime("%Y-%m-%d")
 
-        data = dhan.intraday_minute_data(
-            security_id=future_id,
-            exchange_segment=exchange_segment_str,
-            instrument_type=instrument_type,
-            from_date=from_date,
-            to_date=to_date,
-        )
+        # Enhanced data fetching with failover
+        data = None
+        max_retries = 2  # Primary fetch + 1 retry
+        retry_delay = 2.0  # 2 seconds delay for retry
+
+        for attempt in range(max_retries):
+            try:
+                data = dhan_intraday_minute_data(
+                    dhan,
+                    security_id=future_id,
+                    exchange_segment=exchange_segment_str,
+                    instrument_type=instrument_type,
+                    from_date=from_date,
+                    to_date=to_date,
+                )
+                break  # Success, exit retry loop
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    logger.warning(f"⚠️ Data fetch attempt {attempt + 1} failed for {log_context}: {e}. Retrying in {retry_delay}s...")
+                    time.sleep(retry_delay)
+                else:
+                    logger.error(f"❌ Data fetch failed permanently for {log_context} after {max_retries} attempts: {e}")
+                    raise
 
         if data.get("status") == "failure":
             return None, None
@@ -180,6 +208,13 @@ def get_instrument_data(
 
         df.set_index("time", inplace=True)
 
+        # Stale data detection - check if latest tick is older than 5 minutes
+        latest_timestamp = df.index.max()
+        time_diff = datetime.now() - latest_timestamp.to_pydatetime()
+        if time_diff.total_seconds() > 300:  # 5 minutes
+            logger.warning(f"⚠️ Stale data detected for {log_context}: latest tick is {time_diff.total_seconds()/60:.1f} minutes old. Skipping analysis.")
+            return None, None
+
         if cache_key in _DATA_CACHE:
             cached_df = _DATA_CACHE[cache_key]
             df = pd.concat([cached_df, df])
@@ -218,7 +253,7 @@ def get_instrument_data(
         return df_15, df_60
 
     except Exception as e:
-        logging.error(f"Data Error for {log_context}: {e}")
+        logger.error(f"Data Error for {log_context}: {e}")
         return None, None
 
 
@@ -233,7 +268,7 @@ def get_resampled_data(
 
 
 def analyze_instrument_signal(
-    instrument_key: str, df_15: pd.DataFrame, df_60: pd.DataFrame
+    instrument_key: str, df_15: pd.DataFrame, df_60: pd.DataFrame, **kwargs
 ) -> Optional[Dict[str, Any]]:
     if USE_STRATEGY_PATTERN and STRATEGIES_AVAILABLE:
         try:
@@ -244,13 +279,13 @@ def analyze_instrument_signal(
             )
 
             strategy = get_strategy(instrument_key, strategy_name, strategy_params)
-            signal_info = strategy.analyze(df_15.copy(), df_60.copy())
+            signal_info = strategy.analyze(df_15.copy(), df_60.copy(), **kwargs)
 
             if signal_info:
-                logging.debug(f"[{strategy.name}] {instrument_key}: Signal generated")
+                logger.debug(f"[{strategy.name}] {instrument_key}: Signal generated")
             return signal_info
         except Exception as e:
-            logging.error(f"Strategy error for {instrument_key}: {e}")
+            logger.error(f"Strategy error for {instrument_key}: {e}")
 
     # Legacy Logic
     try:
@@ -327,7 +362,7 @@ def analyze_instrument_signal(
             }
         return None
     except Exception as e:
-        logging.error(f"Analysis error for {instrument_key}: {e}")
+        logger.error(f"Analysis error for {instrument_key}: {e}")
         return None
 
 
@@ -351,7 +386,8 @@ def get_atm_option(
     target_key = "ce" if target == "CE" else "pe"
 
     try:
-        chain = dhan.option_chain(
+        chain = dhan_option_chain(
+            dhan,
             under_security_id=future_id,
             under_exchange_segment=exchange_segment_str,
             expiry=expiry_date,
@@ -387,7 +423,7 @@ def get_atm_option(
             )
         return None
     except Exception as e:
-        logging.error(f"Error in get_atm_option: {e}")
+        logger.error(f"Error in get_atm_option: {e}")
         return None
 
 
@@ -395,7 +431,7 @@ def check_margin_available(
     option_id: str, exchange_segment_str: str, lot_size: int
 ) -> Tuple[bool, str]:
     try:
-        funds = dhan.get_fund_limits()
+        funds = dhan_get_fund_limits(dhan)
         if funds.get("status") == "failure":
             return False, "Could not fetch fund limits"
 
@@ -413,7 +449,7 @@ def check_margin_available(
             if quote_segment == "MCX":
                 quote_segment = "MCX_COMM"
 
-            quote_response = dhan.quote_data({quote_segment: [quote_id]})
+            quote_response = dhan_quote_data(dhan, {quote_segment: [quote_id]})
             if quote_response.get("status") == "success":
                 quote_data = quote_response.get("data", {}).get("data", {})
                 option_quote = quote_data.get(str(option_id)) or quote_data.get(
@@ -425,6 +461,7 @@ def check_margin_available(
 
                 if option_ltp > 0:
                     required = option_ltp * lot_size * 1.05
+                    logger.info(f"MARGIN [UNKNOWN]: Required ₹{required:.0f} | Available ₹{available_balance:.0f} | Status: {'OK' if available_balance >= required else 'INSUFFICIENT'}")
                     if available_balance >= required:
                         return True, f"Margin OK: {available_balance}"
                     else:
@@ -448,7 +485,7 @@ def run_scanner(active_trade: Dict[str, Any], active_instrument: str) -> None:
     if ECONOMIC_CALENDAR_AVAILABLE and _economic_calendar:
         should_pause, pause_event = _economic_calendar.should_pause_trading()
         if should_pause and pause_event:  # Check pause_event is not None
-            logging.info(f"Paused for {pause_event.name}")
+            logger.info(f"Paused for {pause_event.name}")
 
     # ... rest of logic
     # Ensure all dict lookups use str keys
@@ -461,7 +498,7 @@ try:
 except ImportError:
     STRATEGIES_AVAILABLE = False
     USE_STRATEGY_PATTERN = False
-    logging.warning("strategies.py not found. Using legacy signal analysis.")
+    logger.warning("strategies.py not found. Using legacy signal analysis.")
 
 # =============================================================================
 # ECONOMIC CALENDAR INTEGRATION (News Filter)
@@ -474,7 +511,7 @@ try:
 except ImportError:
     _economic_calendar = None
     ECONOMIC_CALENDAR_AVAILABLE = False
-    logging.info("economic_calendar.py not found. News filtering disabled.")
+    logger.info("economic_calendar.py not found. News filtering disabled.")
 
 # =============================================================================
 # DHAN CLIENT
@@ -547,7 +584,7 @@ def get_instrument_data(
             cache_key = instrument_key
         else:
             if not all([future_id, exchange_segment_str, instrument_type]):
-                logging.error(
+                logger.error(
                     "Data Error: Must provide either instrument_key or all of (future_id, exchange_segment_str, instrument_type)"
                 )
                 return None, None
@@ -577,7 +614,9 @@ def get_instrument_data(
 
         if data.get("status") == "failure":
             error_msg = data.get("remarks", data.get("errorMessage", "Unknown error"))
-            logging.error(f"Data Error for {log_context}: API failure - {error_msg}")
+            logger.error(
+                f"Data Error for {log_context} (future_id: {future_id}): API failure - {error_msg}"
+            )
             return None, None
 
         # V2 API returns data in arrays format: open, high, low, close, volume, timestamp
@@ -616,11 +655,11 @@ def get_instrument_data(
             )
             df["time"] = pd.to_datetime(df["time"])
         else:
-            logging.error(f"Data Error for {log_context}: Unexpected data format")
+            logger.error(f"Data Error for {log_context}: Unexpected data format")
             return None, None
 
         if df.empty:
-            logging.error(f"Data Error for {log_context}: Empty dataframe")
+            logger.error(f"Data Error for {log_context}: Empty dataframe")
             return None, None
 
         df.set_index("time", inplace=True)
@@ -669,19 +708,19 @@ def get_instrument_data(
         return df_15, df_60
 
     except KeyError as e:
-        logging.error(f"Data Error for {log_context}: Missing key in response - {e}")
+        logger.error(f"Data Error for {log_context}: Missing key in response - {e}")
         return None, None
     except (pd.errors.EmptyDataError, pd.errors.ParserError) as e:
-        logging.error(f"Data Error for {log_context}: DataFrame parsing failed - {e}")
+        logger.error(f"Data Error for {log_context}: DataFrame parsing failed - {e}")
         return None, None
     except requests.RequestException as e:
-        logging.error(f"Data Error for {log_context}: Network request failed - {e}")
+        logger.error(f"Data Error for {log_context}: Network request failed - {e}")
         return None, None
     except (TypeError, ValueError) as e:
-        logging.error(f"Data Error for {log_context}: Data type/value error - {e}")
+        logger.error(f"Data Error for {log_context}: Data type/value error - {e}")
         return None, None
     except Exception as e:
-        logging.error(
+        logger.error(
             f"Data Error for {log_context}: Unexpected error - {type(e).__name__}: {e}"
         )
         return None, None
@@ -703,7 +742,7 @@ def get_resampled_data(
 
 
 def analyze_instrument_signal(
-    instrument_key: str, df_15: pd.DataFrame, df_60: pd.DataFrame
+    instrument_key: str, df_15: pd.DataFrame, df_60: pd.DataFrame, **kwargs
 ) -> Optional[Dict[str, Any]]:
     """
     Analyze an instrument and return signal info if in trade zone.
@@ -724,14 +763,14 @@ def analyze_instrument_signal(
             )
 
             strategy = get_strategy(instrument_key, strategy_name, strategy_params)
-            signal_info = strategy.analyze(df_15.copy(), df_60.copy())
+            signal_info = strategy.analyze(df_15.copy(), df_60.copy(), **kwargs)
 
             if signal_info:
-                logging.debug(f"[{strategy.name}] {instrument_key}: Signal generated")
+                logger.debug(f"[{strategy.name}] {instrument_key}: Signal generated")
             return signal_info
 
         except Exception as e:
-            logging.error(f"Strategy error for {instrument_key}: {e}")
+            logger.error(f"Strategy error for {instrument_key}: {e}")
             # Fall through to legacy logic
 
     # Legacy hardcoded logic (backward compatibility)
@@ -823,18 +862,18 @@ def analyze_instrument_signal(
         return None
 
     except KeyError as e:
-        logging.error(f"Analysis error for {instrument_key}: Missing data column - {e}")
+        logger.error(f"Analysis error for {instrument_key}: Missing data column - {e}")
         return None
     except IndexError as e:
-        logging.error(
+        logger.error(
             f"Analysis error for {instrument_key}: Insufficient data rows - {e}"
         )
         return None
     except (TypeError, ValueError) as e:
-        logging.error(f"Analysis error for {instrument_key}: Calculation error - {e}")
+        logger.error(f"Analysis error for {instrument_key}: Calculation error - {e}")
         return None
     except Exception as e:
-        logging.error(
+        logger.error(
             f"Analysis error for {instrument_key}: Unexpected error - {type(e).__name__}: {e}"
         )
         return None
@@ -844,42 +883,73 @@ def scan_all_instruments() -> List[Dict[str, Any]]:
     """Scan all configured instruments and return those in trade zone"""
     instruments_to_scan = get_instruments_to_scan()
     signals_found: List[Dict[str, Any]] = []
+    scannable_count = 0
 
-    logging.info(
+    logger.info(
         f"🔍 Scanning {len(instruments_to_scan)} instruments: {', '.join(instruments_to_scan)}"
     )
 
+    scannable_count = 0
     for inst_key in instruments_to_scan:
         # Check if market is open for this instrument
         market_open, market_msg = is_instrument_market_open(inst_key)
         if not market_open:
-            logging.debug(f"   ⏰ {inst_key}: {market_msg}")
+            logger.info(f"SKIP [{inst_key}]: Market closed - {market_msg}")
             continue
 
         # Check if new trades are allowed
         can_trade, trade_msg = can_instrument_trade_new(inst_key)
         if not can_trade:
-            logging.debug(f"   ⏰ {inst_key}: {trade_msg}")
+            logger.info(f"SKIP [{inst_key}]: Trading restricted - {trade_msg}")
             continue
 
+        scannable_count += 1
+
         # Get data for this instrument
+        time.sleep(1)
         df_15, df_60 = get_instrument_data(inst_key)
         if df_15 is None or df_60 is None:
-            logging.debug(f"   ❌ {inst_key}: No data available")
+            logger.info(f"SKIP [{inst_key}]: No data available")
             continue
 
         # Analyze for signals
-        signal_info = analyze_instrument_signal(inst_key, df_15, df_60)
+        kwargs = {}
+        if inst_key == "FINNIFTY":
+            # Get BANKNIFTY data for correlation check
+            try:
+                banknifty_config = INSTRUMENTS.get("BANKNIFTY", {})
+                if banknifty_config:
+                    banknifty_df_15, banknifty_df_60 = get_instrument_data(
+                        future_id=banknifty_config.get("future_id"),
+                        exchange_segment_str=banknifty_config.get(
+                            "exchange_segment_str"
+                        ),
+                        instrument_type=banknifty_config.get("instrument_type"),
+                    )
+                    if banknifty_df_60 is not None:
+                        kwargs["banknifty_df_60"] = banknifty_df_60
+            except Exception as e:
+                logger.warning(
+                    f"Could not get BANKNIFTY data for FINNIFTY correlation: {e}"
+                )
+
+        signal_info = analyze_instrument_signal(inst_key, df_15, df_60, **kwargs)
         if signal_info:
             signals_found.append(signal_info)
             signal_type = (
                 "📈 BULLISH" if signal_info["signal"] == "BUY" else "📉 BEARISH"
             )
-            logging.info(
-                f"   ✅ {inst_key}: {signal_type} | RSI: {signal_info['rsi']:.1f} | Strength: {signal_info['signal_strength']:.1f}"
+            logger.info(
+                f"SIGNAL [{inst_key}]: {signal_type} | Price: ₹{signal_info['price']:.2f} | RSI: {signal_info['rsi']:.1f} | ADX: {signal_info.get('adx', 'N/A'):.1f} | VWAP: {signal_info.get('vwap', 'N/A'):.2f} | ATR: {signal_info.get('atr', 'N/A'):.2f} | Strength: {signal_info['signal_strength']:.1f}"
             )
         else:
-            logging.debug(f"   ⏸️ {inst_key}: No signal (not in trade zone)")
+            logger.debug(f"SKIP [{inst_key}]: No signal generated")
+
+    # Log summary of scannable instruments
+    if scannable_count == 0:
+        logger.info("📊 No instruments are currently in market hours")
+    else:
+        logger.info(f"📊 {scannable_count} instrument(s) are in market hours")
 
     # Sort by priority first, then by signal strength
     if signals_found:
@@ -889,7 +959,7 @@ def scan_all_instruments() -> List[Dict[str, Any]]:
                 -x["signal_strength"],
             )
         )
-        logging.info(f"📊 Found {len(signals_found)} instrument(s) in trade zone")
+        logger.info(f"📊 Found {len(signals_found)} instrument(s) in trade zone")
 
     return signals_found
 
@@ -918,7 +988,7 @@ def find_option_from_scrip_master(
     try:
         contracts = load_scrip_master()
         if not contracts:
-            logging.warning("Could not load scrip master for option lookup")
+            logger.warning("Could not load scrip master for option lookup")
             return None
 
         today = datetime.now().date()
@@ -982,7 +1052,7 @@ def find_option_from_scrip_master(
                 continue
 
         if not matching_options:
-            logging.warning(
+            logger.warning(
                 f"No option found in scrip master for {underlying} {strike_price} {option_type}"
             )
             return None
@@ -991,13 +1061,13 @@ def find_option_from_scrip_master(
         matching_options.sort(key=lambda x: x["expiry"])
         nearest_option = matching_options[0]
 
-        logging.debug(
+        logger.debug(
             f"Found option from scrip master: {nearest_option['symbol']} (exp: {nearest_option['expiry']}) -> ID: {nearest_option['security_id']}"
         )
         return str(nearest_option["security_id"])
 
     except Exception as e:
-        logging.error(f"Error finding option from scrip master: {e}")
+        logger.error(f"Error finding option from scrip master: {e}")
         return None
 
 
@@ -1018,7 +1088,8 @@ def get_atm_option(
     target_key = "ce" if target == "CE" else "pe"
 
     try:
-        chain = dhan.option_chain(
+        chain = dhan_option_chain(
+            dhan,
             under_security_id=future_id,
             under_exchange_segment=exchange_segment_str,
             expiry=expiry_date,
@@ -1054,8 +1125,7 @@ def get_atm_option(
             )
         return None
     except Exception as e:
-        logging.error(f"Error in get_atm_option: {e}")
-        logging.error(f"Error in get_atm_option: {e}")
+        logger.error(f"Error in get_atm_option: {e}")
         return None
 
 
@@ -1063,7 +1133,7 @@ def check_margin_available(
     option_id: str, exchange_segment_str: str, lot_size: int
 ) -> Tuple[bool, str]:
     try:
-        funds = dhan.get_fund_limits()
+        funds = dhan_get_fund_limits(dhan)
         if funds.get("status") == "failure":
             return False, "Could not fetch fund limits"
 
@@ -1081,7 +1151,7 @@ def check_margin_available(
             if quote_segment == "MCX":
                 quote_segment = "MCX_COMM"
 
-            quote_response = dhan.quote_data({quote_segment: [quote_id]})
+            quote_response = dhan_quote_data(dhan, {quote_segment: [quote_id]})
             if quote_response.get("status") == "success":
                 quote_data = quote_response.get("data", {}).get("data", {})
                 option_quote = quote_data.get(str(option_id)) or quote_data.get(
@@ -1093,6 +1163,7 @@ def check_margin_available(
 
                 if option_ltp > 0:
                     required = option_ltp * lot_size * 1.05
+                    logger.info(f"MARGIN [UNKNOWN]: Required ₹{required:.0f} | Available ₹{available_balance:.0f} | Status: {'OK' if available_balance >= required else 'INSUFFICIENT'}")
                     if available_balance >= required:
                         return True, f"Margin OK: {available_balance}"
                     required = option_ltp * lot_size * 1.05
@@ -1162,7 +1233,7 @@ def verify_order(
             order_data = order_response.get("data", {})
             order_id = order_data.get("orderId", "")
             if str(order_id).startswith("PAPER_"):
-                logging.info(f"📝 [PAPER TRADING] {action} Order verified: {order_id}")
+                logger.info(f"📝 [PAPER TRADING] {action} Order verified: {order_id}")
                 return True, {
                     "order_id": order_id,
                     "avg_price": order_data.get("price", 0),
@@ -1175,21 +1246,21 @@ def verify_order(
 
     try:
         if order_response is None:
-            logging.error(f"[{action}] Order response is None")
+            logger.error(f"[{action}] Order response is None")
             return False, None
 
         if order_response.get("status") == "failure":
             error_msg = order_response.get("remarks", "Unknown error")
-            logging.error(f"[{action}] Order FAILED: {error_msg}")
+            logger.error(f"[{action}] Order FAILED: {error_msg}")
             send_alert(f"❌ **ORDER FAILED** ({action}) {symbol_display}\n{error_msg}")
             return False, None
 
         order_id = order_response.get("data", {}).get("orderId")
         if not order_id:
-            logging.error(f"[{action}] Could not get order ID from response")
+            logger.error(f"[{action}] Could not get order ID from response")
             return False, None
 
-        logging.info(f"[{action}] Order placed successfully. Order ID: {order_id}")
+        logger.info(f"[{action}] Order placed successfully. Order ID: {order_id}")
 
         # Initial delay before first status check
         time.sleep(config["initial_delay"])
@@ -1200,12 +1271,12 @@ def verify_order(
             # Check total timeout
             elapsed = time.time() - start_time
             if elapsed >= config["total_timeout"]:
-                logging.warning(
+                logger.warning(
                     f"[{action}] Total timeout ({config['total_timeout']}s) exceeded after {attempt} attempts"
                 )
                 break
 
-            order_status = dhan.get_order_by_id(order_id)
+            order_status = dhan_get_order_by_id(dhan, order_id)
 
             if order_status and order_status.get("status") == "success":
                 order_data = order_status.get("data", {})
@@ -1218,7 +1289,7 @@ def verify_order(
                         avg_price = order_data.get(
                             "tradedPrice", 0
                         )  # Fallback for compatibility
-                    logging.info(
+                    logger.info(
                         f"[{action}] Order FILLED @ ₹{avg_price} (attempt {attempt + 1})"
                     )
                     return True, {
@@ -1232,7 +1303,7 @@ def verify_order(
                     reason = order_data.get("omsErrorDescription") or order_data.get(
                         "rejectedReason", "Unknown"
                     )
-                    logging.error(f"[{action}] Order {status}: {reason}")
+                    logger.error(f"[{action}] Order {status}: {reason}")
                     send_alert(
                         f"❌ **ORDER {status}** ({action}) {symbol_display}\n{reason}"
                     )
@@ -1240,7 +1311,7 @@ def verify_order(
 
                 elif status in ["PENDING", "OPEN"]:
                     remaining_time = config["total_timeout"] - elapsed
-                    logging.debug(
+                    logger.debug(
                         f"[{action}] Order still {status}, attempt {attempt + 1}/{config['max_retries']} "
                         f"(timeout in {remaining_time:.1f}s)"
                     )
@@ -1248,23 +1319,23 @@ def verify_order(
                     # Apply exponential backoff before next retry
                     if attempt < config["max_retries"] - 1:
                         delay = _wait_with_backoff(attempt, config)
-                        logging.debug(
+                        logger.debug(
                             f"[{action}] Waiting {delay:.1f}s before next check..."
                         )
             else:
-                logging.warning(f"[{action}] Failed to fetch order status, retrying...")
+                logger.warning(f"[{action}] Failed to fetch order status, retrying...")
                 if attempt < config["max_retries"] - 1:
                     _wait_with_backoff(attempt, config)
 
         # Order not filled within timeout - cancel it
-        logging.warning(
+        logger.warning(
             f"[{action}] Order not filled in time ({config['total_timeout']}s). Cancelling order {order_id}"
         )
         _cancel_unfilled_order(order_id, action)
         return False, None
 
     except Exception as e:
-        logging.error(f"[{action}] Order verification error: {e}")
+        logger.error(f"[{action}] Order verification error: {e}")
         return False, None
 
 
@@ -1280,15 +1351,15 @@ def _cancel_unfilled_order(order_id: str, action: str) -> bool:
         True if cancelled successfully, False otherwise
     """
     try:
-        cancel_response = dhan.cancel_order(order_id)
+        cancel_response = dhan_cancel_order(dhan, order_id)
         if cancel_response and cancel_response.get("status") == "success":
-            logging.info(f"[{action}] Unfilled order {order_id} cancelled successfully")
+            logger.info(f"[{action}] Unfilled order {order_id} cancelled successfully")
             send_alert(
                 f"⚠️ **ORDER CANCELLED** ({action})\nOrder {order_id} did not fill in time"
             )
             return True
         else:
-            logging.error(
+            logger.error(
                 f"[{action}] Failed to cancel order {order_id}: {cancel_response}"
             )
             send_alert(
@@ -1296,7 +1367,7 @@ def _cancel_unfilled_order(order_id: str, action: str) -> bool:
             )
             return False
     except Exception as cancel_error:
-        logging.error(f"[{action}] Error cancelling order {order_id}: {cancel_error}")
+        logger.error(f"[{action}] Error cancelling order {order_id}: {cancel_error}")
         send_alert(
             f"🚨 **CRITICAL**: Error cancelling unfilled order {order_id}. Manual intervention required!"
         )
@@ -1311,6 +1382,7 @@ def execute_trade_entry(
     df_15: pd.DataFrame,
     active_trade: Dict[str, Any],
     atm_strike: int = 0,
+    signal_info: Optional[Dict[str, Any]] = None,
 ) -> bool:
     """Execute a trade entry for a specific instrument"""
     inst = INSTRUMENTS[inst_key]
@@ -1319,6 +1391,31 @@ def execute_trade_entry(
     opt_type_str = "CE" if signal == "BUY" else "PE"
     option_name = f"{inst['name']} {int(atm_strike)} {opt_type_str}"
 
+    # Check-Before-Entry: Verify no existing position for this instrument at broker
+    try:
+        positions_response = dhan_get_positions(dhan)
+        if positions_response and positions_response.get("status") == "success":
+            positions_data = positions_response.get("data", [])
+            for position in positions_data:
+                if position.get("security_id") == opt_id:
+                    logger.warning(f"⚠️ Position already exists for {option_name} at broker. Skipping duplicate trade entry.")
+                    send_high_priority_alert(
+                        f"🚨 **DUPLICATE TRADE PREVENTION**\n"
+                        f"Attempted to enter {option_name} but position already exists at broker.\n"
+                        f"Security ID: {opt_id}\n"
+                        f"Local state may be out of sync - manual verification required!"
+                    )
+                    return False
+    except Exception as e:
+        logger.error(f"❌ Failed to check existing positions before entry for {option_name}: {e}")
+        # Continue with trade entry but log the issue
+        send_high_priority_alert(
+            f"🚨 **POSITION CHECK FAILED**\n"
+            f"Could not verify existing positions before entering {option_name}.\n"
+            f"Error: {e}\n"
+            f"Proceeding with trade entry - monitor closely!"
+        )
+
     # Place order with LIMIT buffer
     limit_price = round(price * (1 + LIMIT_ORDER_BUFFER), 2)
 
@@ -1326,7 +1423,7 @@ def execute_trade_entry(
     is_paper_trading = config.get_trading_param("PAPER_TRADING", False)
 
     if is_paper_trading:
-        logging.info(
+        logger.info(
             f"📝 PAPER TRADING: Placing ENTRY order for {opt_id} @ ₹{limit_price}"
         )
         order_response = {
@@ -1334,7 +1431,8 @@ def execute_trade_entry(
             "data": {"orderId": f"PAPER_{int(time.time()*1000)}", "price": limit_price},
         }
     else:
-        order_response = dhan.place_order(
+        order_response = dhan_place_order(
+            dhan,
             security_id=opt_id,
             exchange_segment=inst["exchange_segment_str"],
             transaction_type=dhan.BUY,
@@ -1349,7 +1447,7 @@ def execute_trade_entry(
     )
 
     if not order_success:
-        logging.error(f"❌ {inst_key}: Entry order failed, skipping trade")
+        logger.error(f"❌ {inst_key}: Entry order failed, skipping trade")
         update_last_signal(signal, instrument=inst_key)
         return False
 
@@ -1367,7 +1465,11 @@ def execute_trade_entry(
         )
     socket_handler.set_option_ltp(option_entry_price)
 
-    dynamic_sl = get_dynamic_sl(signal, df_15)
+    # Use strategy-provided stop loss if available, otherwise calculate dynamically
+    if signal_info and "stop_loss" in signal_info:
+        dynamic_sl = signal_info["stop_loss"]
+    else:
+        dynamic_sl = get_dynamic_sl(signal, df_15)
 
     # Calculate option SL based on future SL (approximate option price movement)
     # Option premium SL ~ 70-80% of entry for ATM options
@@ -1396,7 +1498,7 @@ def execute_trade_entry(
 
     risk = abs(price - dynamic_sl)
     opt_type = "CE" if signal == "BUY" else "PE"
-    logging.info(
+    logger.info(
         f">>> NEW TRADE: {inst['name']} {atm_strike} {opt_type} @ Premium ₹{option_entry_price} | Future: {price} | SL: {dynamic_sl}"
     )
 
@@ -1430,7 +1532,7 @@ def execute_trade_entry(
 def run_scanner(active_trade: Dict[str, Any], active_instrument: str) -> None:
     """Main scanner loop"""
     global _last_calendar_log
-    logging.info(
+    logger.info(
         ">>> Scanner Started (Multi-Instrument Mode)"
         if MULTI_SCAN_ENABLED
         else ">>> Scanner Started (Single Instrument)"
@@ -1455,7 +1557,7 @@ def run_scanner(active_trade: Dict[str, Any], active_instrument: str) -> None:
             ).total_seconds() >= config_reload_interval:
                 config.reload_trading_config()
                 last_config_reload = datetime.now()
-                logging.debug("📝 Trading config reloaded")
+                logger.debug("📝 Trading config reloaded")
 
             # === CHECK FOR EMERGENCY EXIT SIGNAL ===
             if EMERGENCY_EXIT_SIGNAL_FILE.exists() and active_trade["status"]:
@@ -1463,7 +1565,7 @@ def run_scanner(active_trade: Dict[str, Any], active_instrument: str) -> None:
                     with open(EMERGENCY_EXIT_SIGNAL_FILE, "r") as f:
                         exit_signal = json.load(f)
 
-                    logging.warning(
+                    logger.warning(
                         f"🚨 EMERGENCY EXIT requested by {exit_signal.get('requested_by', 'dashboard')}"
                     )
 
@@ -1493,9 +1595,9 @@ def run_scanner(active_trade: Dict[str, Any], active_instrument: str) -> None:
                     exit_success = place_exit_order(active_trade, "EMERGENCY_EXIT")
 
                     if exit_success:
-                        logging.info("✅ Emergency exit completed successfully")
+                        logger.info("✅ Emergency exit completed successfully")
                     else:
-                        logging.error(
+                        logger.error(
                             "❌ Emergency exit order failed - manual intervention needed!"
                         )
                         send_alert(
@@ -1505,7 +1607,7 @@ def run_scanner(active_trade: Dict[str, Any], active_instrument: str) -> None:
                     # Remove the signal file
                     EMERGENCY_EXIT_SIGNAL_FILE.unlink()
                 except Exception as e:
-                    logging.error(f"Error processing emergency exit: {e}")
+                    logger.error(f"Error processing emergency exit: {e}")
                     # Try to remove corrupted signal file
                     try:
                         EMERGENCY_EXIT_SIGNAL_FILE.unlink()
@@ -1526,7 +1628,7 @@ def run_scanner(active_trade: Dict[str, Any], active_instrument: str) -> None:
                             if (
                                 datetime.now() - sig_time
                             ).total_seconds() > 300:  # 5 minutes
-                                logging.warning(
+                                logger.warning(
                                     f"⚠️ Discarding STALE manual signal from {signal_timestamp_str}"
                                 )
                                 MANUAL_TRADE_SIGNAL_FILE.unlink()
@@ -1538,7 +1640,7 @@ def run_scanner(active_trade: Dict[str, Any], active_instrument: str) -> None:
                     signal = manual_signal.get("signal")
 
                     if inst_key and signal and inst_key in INSTRUMENTS:
-                        logging.info(
+                        logger.info(
                             f"📝 MANUAL TRADE signal received: {inst_key} {signal}"
                         )
 
@@ -1576,6 +1678,7 @@ def run_scanner(active_trade: Dict[str, Any], active_instrument: str) -> None:
                                 opt_id,
                                 cast(str, inst["exchange_segment_str"]),
                                 cast(int, inst["lot_size"]),
+                                inst_key,
                             )
 
                             if margin_ok:
@@ -1593,14 +1696,15 @@ def run_scanner(active_trade: Dict[str, Any], active_instrument: str) -> None:
                                     df_15=df_15,
                                     active_trade=active_trade,
                                     atm_strike=atm_strike,
+                                    signal_info=None,  # Manual trade, no strategy signal info
                                 )
 
                                 if trade_executed:
-                                    logging.info(
+                                    logger.info(
                                         f"✅ Manual trade executed: {inst_key} {signal}"
                                     )
                                 else:
-                                    logging.error(f"❌ Manual trade execution failed")
+                                    logger.error(f"❌ Manual trade execution failed")
                                     send_alert(
                                         f"❌ **MANUAL TRADE FAILED** ({option_name})\n{inst_key} {signal}"
                                     )
@@ -1609,14 +1713,14 @@ def run_scanner(active_trade: Dict[str, Any], active_instrument: str) -> None:
                                 option_name = (
                                     f"{inst_key} {int(atm_strike)} {target_type}"
                                 )
-                                logging.warning(
+                                logger.warning(
                                     f"❌ Manual trade skipped - insufficient margin: {margin_msg}"
                                 )
                                 send_alert(
                                     f"⚠️ **MANUAL TRADE SKIPPED** ({option_name})\n{margin_msg}"
                                 )
                         else:
-                            logging.error(f"❌ Could not find option for manual trade")
+                            logger.error(f"❌ Could not find option for manual trade")
                             send_alert(
                                 f"❌ **MANUAL TRADE FAILED** ({option_name})\nCould not find option contract"
                             )
@@ -1625,7 +1729,7 @@ def run_scanner(active_trade: Dict[str, Any], active_instrument: str) -> None:
                     MANUAL_TRADE_SIGNAL_FILE.unlink()
 
                 except Exception as e:
-                    logging.error(f"Error processing manual trade signal: {e}")
+                    logger.error(f"Error processing manual trade signal: {e}")
                     # Try to remove corrupted signal file
                     try:
                         MANUAL_TRADE_SIGNAL_FILE.unlink()
@@ -1639,7 +1743,7 @@ def run_scanner(active_trade: Dict[str, Any], active_instrument: str) -> None:
                 should_pause, pause_event = _economic_calendar.should_pause_trading()
                 if should_pause:
                     assert pause_event is not None
-                    logging.info(
+                    logger.info(
                         f"📰 Trading paused due to economic event: {pause_event.name}"
                     )
                     # Log upcoming events periodically (once per hour)
@@ -1649,11 +1753,11 @@ def run_scanner(active_trade: Dict[str, Any], active_instrument: str) -> None:
                     ):
                         upcoming = _economic_calendar.get_upcoming_events(hours_ahead=4)
                         if upcoming:
-                            logging.info(
+                            logger.info(
                                 f"📅 Upcoming high-impact events ({len(upcoming)}):"
                             )
                             for evt in upcoming[:3]:
-                                logging.info(f"   - {evt.name} @ {evt.timestamp}")
+                                logger.info(f"   - {evt.name} @ {evt.timestamp}")
                         _last_calendar_log = datetime.now()
                     time.sleep(60)  # Check again in 1 minute
                     continue
@@ -1661,7 +1765,7 @@ def run_scanner(active_trade: Dict[str, Any], active_instrument: str) -> None:
             # Check 1: Daily limits
             within_limits, limits_msg = check_daily_limits()
             if not within_limits:
-                logging.warning(f"🛑 {limits_msg}")
+                logger.warning(f"🛑 {limits_msg}")
                 send_alert(f"🛑 **TRADING STOPPED**\n{limits_msg}")
                 time.sleep(300)
                 continue
@@ -1671,7 +1775,7 @@ def run_scanner(active_trade: Dict[str, Any], active_instrument: str) -> None:
                 COOLDOWN_AFTER_LOSS
             )
             if in_cooldown:
-                logging.debug(f"⏳ {cooldown_msg}")
+                logger.debug(f"⏳ {cooldown_msg}")
                 time.sleep(30)
                 continue
 
@@ -1698,7 +1802,7 @@ def run_scanner(active_trade: Dict[str, Any], active_instrument: str) -> None:
                             )
                         )
                         if in_signal_cooldown:
-                            logging.info(f"⏳ {inst_key}: {signal_msg}")
+                            logger.info(f"⏳ {inst_key}: {signal_msg}")
                             continue
 
                         inst = INSTRUMENTS[inst_key]
@@ -1720,25 +1824,26 @@ def run_scanner(active_trade: Dict[str, Any], active_instrument: str) -> None:
                         )
 
                         if not opt_id:
-                            logging.warning(f"❌ {inst_key}: Could not find ATM option")
+                            logger.warning(f"❌ {inst_key}: Could not find ATM option")
                             continue
 
                         margin_ok, margin_msg = check_margin_available(
                             opt_id,
                             cast(str, inst["exchange_segment_str"]),
                             cast(int, inst["lot_size"]),
+                            inst_key,
                         )
                         if not margin_ok:
                             target_type = "CE" if signal == "BUY" else "PE"
                             option_name = f"{inst_key} {int(atm_strike)} {target_type}"
-                            logging.warning(f"💰 {inst_key}: {margin_msg}")
+                            logger.warning(f"💰 {inst_key}: {margin_msg}")
                             send_alert(
                                 f"⚠️ **TRADE SKIPPED** ({option_name})\n{margin_msg}"
                             )
                             update_last_signal(signal, instrument=inst_key)
                             continue
 
-                        logging.info(f"💰 {inst_key}: {margin_msg}")
+                        logger.info(f"💰 {inst_key}: {margin_msg}")
 
                         trade_executed = execute_trade_entry(
                             inst_key=inst_key,
@@ -1748,6 +1853,7 @@ def run_scanner(active_trade: Dict[str, Any], active_instrument: str) -> None:
                             df_15=df_15,
                             active_trade=active_trade,
                             atm_strike=atm_strike,
+                            signal_info=signal_info,
                         )
 
                         if trade_executed:
@@ -1761,7 +1867,7 @@ def run_scanner(active_trade: Dict[str, Any], active_instrument: str) -> None:
                         cast(str, inst["market_start"]), cast(str, inst["market_end"])
                     )
                     if not market_open:
-                        logging.debug(f"⏰ {market_msg}")
+                        logger.info(f"SKIP [{active_instrument}]: Market closed - {market_msg}")
                         time.sleep(60)
                         continue
 
@@ -1769,7 +1875,7 @@ def run_scanner(active_trade: Dict[str, Any], active_instrument: str) -> None:
                         cast(str, inst["no_new_trade_after"])
                     )
                     if not can_trade:
-                        logging.debug(f"⏰ {trade_msg}")
+                        logger.info(f"SKIP [{active_instrument}]: Trading restricted - {trade_msg}")
                         time.sleep(60)
                         continue
 
@@ -1780,8 +1886,34 @@ def run_scanner(active_trade: Dict[str, Any], active_instrument: str) -> None:
                     )
 
                     if df_15 is not None and df_60 is not None:
+                        kwargs = {}
+                        if active_instrument == "FINNIFTY":
+                            # Get BANKNIFTY data for correlation check
+                            try:
+                                banknifty_config = INSTRUMENTS.get("BANKNIFTY", {})
+                                if banknifty_config:
+                                    banknifty_df_15, banknifty_df_60 = (
+                                        get_instrument_data(
+                                            future_id=banknifty_config.get("future_id"),
+                                            exchange_segment_str=banknifty_config.get(
+                                                "exchange_segment_str"
+                                            ),
+                                            instrument_type=banknifty_config.get(
+                                                "instrument_type"
+                                            ),
+                                        )
+                                    )
+                                    if banknifty_df_60 is not None:
+                                        kwargs["banknifty_df_60"] = banknifty_df_60
+                            except Exception as e:
+                                logger.warning(
+                                    f"Could not get BANKNIFTY data for FINNIFTY correlation: {e}"
+                                )
+
                         signal_data: Optional[Dict[str, Any]] = (
-                            analyze_instrument_signal(active_instrument, df_15, df_60)
+                            analyze_instrument_signal(
+                                active_instrument, df_15, df_60, **kwargs
+                            )
                         )
 
                         if signal_data is not None:
@@ -1797,7 +1929,7 @@ def run_scanner(active_trade: Dict[str, Any], active_instrument: str) -> None:
                                 )
                             )
                             if in_signal_cooldown:
-                                logging.info(f"⏳ {active_instrument}: {signal_msg}")
+                                logger.info(f"⏳ {active_instrument}: {signal_msg}")
                                 time.sleep(60)
                                 continue
 
@@ -1826,7 +1958,7 @@ def run_scanner(active_trade: Dict[str, Any], active_instrument: str) -> None:
                                 if not margin_ok:
                                     target_type = "CE" if signal == "BUY" else "PE"
                                     option_name = f"{active_instrument} {int(atm_strike)} {target_type}"
-                                    logging.warning(
+                                    logger.warning(
                                         f"💰 {active_instrument}: {margin_msg}"
                                     )
                                     send_alert(
@@ -1838,7 +1970,7 @@ def run_scanner(active_trade: Dict[str, Any], active_instrument: str) -> None:
                                     time.sleep(60)
                                     continue
 
-                                logging.info(f"💰 {margin_msg}")
+                                logger.info(f"💰 {margin_msg}")
 
                                 execute_trade_entry(
                                     inst_key=active_instrument,
@@ -1848,11 +1980,12 @@ def run_scanner(active_trade: Dict[str, Any], active_instrument: str) -> None:
                                     df_15=df_15,
                                     active_trade=active_trade,
                                     atm_strike=atm_strike,
+                                    signal_info=signal_data,
                                 )
 
             time.sleep(60)
         except Exception as e:
-            logging.error(f"Scanner: {e}")
+            logger.error(f"Scanner: {e}")
             time.sleep(60)
 
 

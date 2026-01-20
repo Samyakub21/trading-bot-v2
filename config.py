@@ -7,9 +7,15 @@ Loads trading parameters from trading_config.json or environment variables
 import os
 import json
 import logging
-import logging
 from pathlib import Path
 from typing import Any, Dict, Optional
+
+try:
+    from dotenv import load_dotenv
+
+    DOTENV_AVAILABLE = True
+except ImportError:
+    DOTENV_AVAILABLE = False
 
 
 # =============================================================================
@@ -32,7 +38,8 @@ DEFAULT_TRADING_CONFIG = {
     "VOLUME_MULTIPLIER": 1.2,  # Volume must be 1.2x average for signal confirmation
     # Order Execution
     "LIMIT_ORDER_BUFFER": 0.01,  # 1% buffer for limit orders
-    # Paper Trading / Dry Run
+    # Logging Configuration
+    "DEBUG_MODE": False,  # Enable debug logging when True
     "PAPER_TRADING": True,  # Simulate trades without placing orders
     # Database Configuration
     "USE_DATABASE": True,  # Use SQLite database instead of JSON files
@@ -44,22 +51,23 @@ DEFAULT_TRADING_CONFIG = {
     # Instrument Configuration
     "ENABLED_INSTRUMENTS": [
         "CRUDEOIL",
-        "NATURALGAS",
-        "GOLD",
-        "SILVER",
+        # "NATURALGAS",
+        "NATGASMINI",
+        # "GOLD",
+        # "SILVER",
         "NIFTY",
         "BANKNIFTY",
     ],
     "INSTRUMENT_PRIORITY": {
         "CRUDEOIL": 3,
-        "GOLD": 5,
-        "SILVER": 6,  # Lowest priority
-        "NATURALGAS": 4,
+        # "GOLD": 5,
+        # "SILVER": 6,  # Lowest priority
+        # "NATURALGAS": 4,
+        "NATGASMINI": 4,
         "NIFTY": 1,  # Highest priority
         "BANKNIFTY": 2,
     },
     # Per-Instrument Custom Settings (overrides global settings)
-    "PER_INSTRUMENT_SETTINGS": {},
     "PER_INSTRUMENT_SETTINGS": {},
     # State Files (fallback when database is disabled)
     "STATE_FILE": str(DATA_DIR / "trade_state_active.json"),
@@ -67,11 +75,24 @@ DEFAULT_TRADING_CONFIG = {
     "TRADE_HISTORY_FILE": str(DATA_DIR / "trade_history_combined.json"),
 }
 
+# =============================================================================
+# LOGGING CONFIGURATION
+# =============================================================================
+LOG_FORMAT = "%(asctime)s | %(levelname)-8s | [%(name)s] | %(message)s"
+LOG_DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
+LOG_FILE_MAX_BYTES = 5 * 1024 * 1024  # 5MB
+LOG_FILE_BACKUP_COUNT = 5
+LOG_FILE_PATH = str(DATA_DIR / "trading_bot.log")
+
 
 class Config:
     """Configuration class that loads credentials and trading params from environment or config files"""
 
     def __init__(self):
+        # Load .env file if available
+        if DOTENV_AVAILABLE:
+            load_dotenv()
+
         # --- Credentials ---
         self.CLIENT_ID = os.getenv("DHAN_CLIENT_ID")
         self.ACCESS_TOKEN = os.getenv("DHAN_ACCESS_TOKEN")
@@ -115,16 +136,12 @@ class Config:
                 "⚠️ MISSING CREDENTIALS! The bot will fail to connect, but tests can run.\n"
                 "Please set DHAN_CLIENT_ID, DHAN_ACCESS_TOKEN, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID."
             )
-            logging.warning(
-                "⚠️ MISSING CREDENTIALS! The bot will fail to connect, but tests can run.\n"
-                "Please set DHAN_CLIENT_ID, DHAN_ACCESS_TOKEN, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID."
-            )
 
         # --- Trading Configuration ---
         self._trading_config = self._load_trading_config()
 
     def _load_credentials_from_file(self):
-        """Load credentials from credentials.json file"""
+        """Load credentials from credentials.json file (fallback for non-sensitive data)"""
         credentials_file = Path(__file__).parent / "credentials.json"
 
         if not credentials_file.exists():
@@ -134,16 +151,59 @@ class Config:
             with open(credentials_file, "r") as f:
                 creds = json.load(f)
 
-            self.CLIENT_ID = creds.get("CLIENT_ID", self.CLIENT_ID)
-            self.ACCESS_TOKEN = creds.get("ACCESS_TOKEN", self.ACCESS_TOKEN)
-            self.TELEGRAM_TOKEN = creds.get("TELEGRAM_TOKEN", self.TELEGRAM_TOKEN)
-            self.TELEGRAM_CHAT_ID = creds.get("TELEGRAM_CHAT_ID", self.TELEGRAM_CHAT_ID)
-            self.SIGNAL_BOT_TOKEN = creds.get("SIGNAL_BOT_TOKEN", self.SIGNAL_BOT_TOKEN)
+            # Load Core Credentials (only if not already set from env)
+            if not self.CLIENT_ID:
+                self.CLIENT_ID = creds.get("CLIENT_ID", self.CLIENT_ID)
+            if not self.ACCESS_TOKEN:
+                self.ACCESS_TOKEN = creds.get("ACCESS_TOKEN", self.ACCESS_TOKEN)
+            if not self.TELEGRAM_TOKEN:
+                self.TELEGRAM_TOKEN = creds.get("TELEGRAM_TOKEN", self.TELEGRAM_TOKEN)
+            if not self.TELEGRAM_CHAT_ID:
+                self.TELEGRAM_CHAT_ID = creds.get(
+                    "TELEGRAM_CHAT_ID", self.TELEGRAM_CHAT_ID
+                )
+            if not self.SIGNAL_BOT_TOKEN:
+                self.SIGNAL_BOT_TOKEN = creds.get(
+                    "SIGNAL_BOT_TOKEN", self.SIGNAL_BOT_TOKEN
+                )
+
+            # --- Email Config: Prioritize env vars and Docker secrets over JSON ---
+            # Check environment variables first (including .env file)
+            email_vars = [
+                "SMTP_SERVER",
+                "SMTP_PORT",
+                "EMAIL_ADDRESS",
+                "EMAIL_PASSWORD",
+                "EMAIL_RECIPIENT",
+            ]
+
+            for var in email_vars:
+                # First check environment variable
+                env_value = os.getenv(var)
+                if env_value:
+                    os.environ[var] = str(env_value)
+                    continue
+
+                # Then check Docker secrets (/run/secrets/)
+                secret_file = Path("/run/secrets") / var.lower()
+                if secret_file.exists():
+                    try:
+                        with open(secret_file, "r") as f:
+                            secret_value = f.read().strip()
+                        if secret_value:
+                            os.environ[var] = secret_value
+                            continue
+                    except Exception:
+                        pass
+
+                # Finally fall back to credentials.json (for backward compatibility)
+                if var in creds and creds[var]:
+                    os.environ[var] = str(creds[var])
+
         except Exception as e:
             print(f"Warning: Could not load credentials.json: {e}")
 
     def _load_trading_config(self) -> Dict[str, Any]:
-        """Load trading configuration"""
         """Load trading configuration"""
         config = DEFAULT_TRADING_CONFIG.copy()
 
@@ -182,7 +242,6 @@ class Config:
     def get_trading_param(self, key: str, default: Any = None) -> Any:
         return self._trading_config.get(key, default)
 
-    # --- Properties ---
     # --- Properties ---
     @property
     def MAX_DAILY_LOSS(self) -> float:
@@ -258,7 +317,7 @@ class Config:
     def ENABLED_INSTRUMENTS(self) -> list:
         return self._trading_config.get(
             "ENABLED_INSTRUMENTS",
-            ["CRUDEOIL", "NATURALGAS", "GOLD", "SILVER", "NIFTY", "BANKNIFTY"],
+            ["CRUDEOIL", "NATURALGAS", "NIFTY", "BANKNIFTY"],
         )
 
     @property
@@ -267,8 +326,8 @@ class Config:
             "INSTRUMENT_PRIORITY",
             {
                 "CRUDEOIL": 1,
-                "GOLD": 2,
-                "SILVER": 3,
+                # "GOLD": 2,
+                # "SILVER": 3,
                 "NATURALGAS": 4,
                 "NIFTY": 5,
                 "BANKNIFTY": 6,
@@ -311,6 +370,10 @@ class Config:
     @property
     def MIN_TICK_INTERVAL_MS(self) -> int:
         return 100
+
+    @property
+    def DEBUG_MODE(self) -> bool:
+        return self._trading_config.get("DEBUG_MODE", False)
 
     def reload_trading_config(self) -> Dict[str, Any]:
         self._trading_config = self._load_trading_config()
