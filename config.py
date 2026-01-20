@@ -50,7 +50,8 @@ DEFAULT_TRADING_CONFIG = {
     # Instrument Configuration
     "ENABLED_INSTRUMENTS": [
         "CRUDEOIL",
-        "NATURALGAS",
+        # "NATURALGAS",
+        "NATGASMINI",
         # "GOLD",
         # "SILVER",
         "NIFTY",
@@ -60,7 +61,8 @@ DEFAULT_TRADING_CONFIG = {
         "CRUDEOIL": 3,
         # "GOLD": 5,
         # "SILVER": 6,  # Lowest priority
-        "NATURALGAS": 4,
+        # "NATURALGAS": 4,
+        "NATGASMINI": 4,
         "NIFTY": 1,  # Highest priority
         "BANKNIFTY": 2,
     },

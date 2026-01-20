@@ -1,53 +1,152 @@
 {
   "events": [
     {
-      "name": "Bank Holiday",
-      "timestamp": "2026-01-11T19:00:00",
+      "name": "Core Machinery Orders m/m",
+      "timestamp": "2026-01-18T18:50:00",
       "impact": "low",
       "country": "JPY",
       "actual": null,
+      "forecast": "-5.2%",
+      "previous": "7.0%"
+    },
+    {
+      "name": "MI Inflation Gauge m/m",
+      "timestamp": "2026-01-18T19:00:00",
+      "impact": "low",
+      "country": "AUD",
+      "actual": null,
+      "forecast": "",
+      "previous": "0.3%"
+    },
+    {
+      "name": "Rightmove HPI m/m",
+      "timestamp": "2026-01-18T19:01:00",
+      "impact": "low",
+      "country": "GBP",
+      "actual": null,
+      "forecast": "",
+      "previous": "-1.8%"
+    },
+    {
+      "name": "New Home Prices m/m",
+      "timestamp": "2026-01-18T20:30:00",
+      "impact": "low",
+      "country": "CNY",
+      "actual": null,
+      "forecast": "",
+      "previous": "-0.39%"
+    },
+    {
+      "name": "Fixed Asset Investment ytd/y",
+      "timestamp": "2026-01-18T21:00:00",
+      "impact": "low",
+      "country": "CNY",
+      "actual": null,
+      "forecast": "-3.1%",
+      "previous": "-2.6%"
+    },
+    {
+      "name": "GDP q/y",
+      "timestamp": "2026-01-18T21:00:00",
+      "impact": "low",
+      "country": "CNY",
+      "actual": null,
+      "forecast": "4.5%",
+      "previous": "4.8%"
+    },
+    {
+      "name": "Industrial Production y/y",
+      "timestamp": "2026-01-18T21:00:00",
+      "impact": "low",
+      "country": "CNY",
+      "actual": null,
+      "forecast": "5.1%",
+      "previous": "4.8%"
+    },
+    {
+      "name": "NBS Press Conference",
+      "timestamp": "2026-01-18T21:00:00",
+      "impact": "low",
+      "country": "CNY",
+      "actual": null,
       "forecast": "",
       "previous": ""
     },
     {
-      "name": "ANZ Job Advertisements m/m",
-      "timestamp": "2026-01-11T19:30:00",
+      "name": "Retail Sales y/y",
+      "timestamp": "2026-01-18T21:00:00",
       "impact": "low",
-      "country": "AUD",
+      "country": "CNY",
       "actual": null,
-      "forecast": "",
-      "previous": "-0.8%"
-    },
-    {
-      "name": "Household Spending m/m",
-      "timestamp": "2026-01-11T19:30:00",
-      "impact": "low",
-      "country": "AUD",
-      "actual": null,
-      "forecast": "0.6%",
+      "forecast": "1.1%",
       "previous": "1.3%"
     },
     {
-      "name": "SECO Consumer Climate",
-      "timestamp": "2026-01-12T03:00:00",
+      "name": "Unemployment Rate",
+      "timestamp": "2026-01-18T21:00:00",
       "impact": "low",
-      "country": "CHF",
+      "country": "CNY",
       "actual": null,
-      "forecast": "-33",
-      "previous": "-34"
+      "forecast": "5.2%",
+      "previous": "5.1%"
     },
     {
-      "name": "Sentix Investor Confidence",
-      "timestamp": "2026-01-12T04:30:00",
+      "name": "Revised Industrial Production m/m",
+      "timestamp": "2026-01-18T23:30:00",
+      "impact": "low",
+      "country": "JPY",
+      "actual": null,
+      "forecast": "-2.6%",
+      "previous": "-2.6%"
+    },
+    {
+      "name": "Tertiary Industry Activity m/m",
+      "timestamp": "2026-01-18T23:30:00",
+      "impact": "low",
+      "country": "JPY",
+      "actual": null,
+      "forecast": "0.0%",
+      "previous": "0.9%"
+    },
+    {
+      "name": "WEF Annual Meetings",
+      "timestamp": "2026-01-19T04:15:00",
+      "impact": "low",
+      "country": "All",
+      "actual": null,
+      "forecast": "",
+      "previous": ""
+    },
+    {
+      "name": "Final Core CPI y/y",
+      "timestamp": "2026-01-19T05:00:00",
       "impact": "low",
       "country": "EUR",
       "actual": null,
-      "forecast": "-5.1",
-      "previous": "-6.2"
+      "forecast": "2.3%",
+      "previous": "2.3%"
     },
     {
-      "name": "FOMC Member Barkin Speaks",
-      "timestamp": "2026-01-12T12:45:00",
+      "name": "Final CPI y/y",
+      "timestamp": "2026-01-19T05:00:00",
+      "impact": "low",
+      "country": "EUR",
+      "actual": null,
+      "forecast": "2.0%",
+      "previous": "2.0%"
+    },
+    {
+      "name": "Eurogroup Meetings",
+      "timestamp": "2026-01-19T05:15:00",
+      "impact": "low",
+      "country": "EUR",
+      "actual": null,
+      "forecast": "",
+      "previous": ""
+    },
+    {
+      "name": "Bank Holiday",
+      "timestamp": "2026-01-19T08:00:00",
       "impact": "low",
       "country": "USD",
       "actual": null,
@@ -55,215 +154,395 @@
       "previous": ""
     },
     {
-      "name": "10-y Bond Auction",
-      "timestamp": "2026-01-12T13:01:00",
-      "impact": "low",
-      "country": "USD",
+      "name": "CPI m/m",
+      "timestamp": "2026-01-19T08:30:00",
+      "impact": "high",
+      "country": "CAD",
       "actual": null,
-      "forecast": "",
-      "previous": "4.18|2.6"
+      "forecast": "-0.4%",
+      "previous": "0.1%"
     },
     {
-      "name": "NZIER Business Confidence",
-      "timestamp": "2026-01-12T16:00:00",
+      "name": "Median CPI y/y",
+      "timestamp": "2026-01-19T08:30:00",
+      "impact": "high",
+      "country": "CAD",
+      "actual": null,
+      "forecast": "2.7%",
+      "previous": "2.8%"
+    },
+    {
+      "name": "Trimmed CPI y/y",
+      "timestamp": "2026-01-19T08:30:00",
+      "impact": "high",
+      "country": "CAD",
+      "actual": null,
+      "forecast": "2.7%",
+      "previous": "2.8%"
+    },
+    {
+      "name": "Common CPI y/y",
+      "timestamp": "2026-01-19T08:30:00",
+      "impact": "medium",
+      "country": "CAD",
+      "actual": null,
+      "forecast": "2.8%",
+      "previous": "2.8%"
+    },
+    {
+      "name": "Core CPI m/m",
+      "timestamp": "2026-01-19T08:32:00",
+      "impact": "low",
+      "country": "CAD",
+      "actual": null,
+      "forecast": "",
+      "previous": "-0.1%"
+    },
+    {
+      "name": "BOC Business Outlook Survey",
+      "timestamp": "2026-01-19T10:30:00",
+      "impact": "medium",
+      "country": "CAD",
+      "actual": null,
+      "forecast": "",
+      "previous": ""
+    },
+    {
+      "name": "BusinessNZ Services Index",
+      "timestamp": "2026-01-19T16:30:00",
       "impact": "low",
       "country": "NZD",
       "actual": null,
       "forecast": "",
-      "previous": "18"
+      "previous": "46.9"
     },
     {
-      "name": "Westpac Consumer Sentiment",
-      "timestamp": "2026-01-12T17:50:00",
+      "name": "1-y Loan Prime Rate",
+      "timestamp": "2026-01-19T20:00:00",
       "impact": "low",
-      "country": "AUD",
+      "country": "CNY",
       "actual": null,
-      "forecast": "",
-      "previous": "-9.0%"
+      "forecast": "3.00%",
+      "previous": "3.00%"
     },
     {
-      "name": "FOMC Member Williams Speaks",
-      "timestamp": "2026-01-12T18:00:00",
+      "name": "5-y Loan Prime Rate",
+      "timestamp": "2026-01-19T20:00:00",
       "impact": "low",
-      "country": "USD",
+      "country": "CNY",
+      "actual": null,
+      "forecast": "3.50%",
+      "previous": "3.50%"
+    },
+    {
+      "name": "German PPI m/m",
+      "timestamp": "2026-01-20T02:00:00",
+      "impact": "low",
+      "country": "EUR",
+      "actual": null,
+      "forecast": "-0.2%",
+      "previous": "0.0%"
+    },
+    {
+      "name": "Claimant Count Change",
+      "timestamp": "2026-01-20T02:00:00",
+      "impact": "high",
+      "country": "GBP",
+      "actual": null,
+      "forecast": "15.6K",
+      "previous": "20.1K"
+    },
+    {
+      "name": "Average Earnings Index 3m/y",
+      "timestamp": "2026-01-20T02:00:00",
+      "impact": "medium",
+      "country": "GBP",
+      "actual": null,
+      "forecast": "4.6%",
+      "previous": "4.7%"
+    },
+    {
+      "name": "Unemployment Rate",
+      "timestamp": "2026-01-20T02:00:00",
+      "impact": "low",
+      "country": "GBP",
+      "actual": null,
+      "forecast": "5.1%",
+      "previous": "5.1%"
+    },
+    {
+      "name": "PPI m/m",
+      "timestamp": "2026-01-20T02:30:00",
+      "impact": "low",
+      "country": "CHF",
+      "actual": null,
+      "forecast": "-0.2%",
+      "previous": "-0.5%"
+    },
+    {
+      "name": "Current Account",
+      "timestamp": "2026-01-20T04:00:00",
+      "impact": "low",
+      "country": "EUR",
+      "actual": null,
+      "forecast": "20.3B",
+      "previous": "25.7B"
+    },
+    {
+      "name": "WEF Annual Meetings",
+      "timestamp": "2026-01-20T04:15:00",
+      "impact": "medium",
+      "country": "All",
       "actual": null,
       "forecast": "",
       "previous": ""
     },
     {
-      "name": "Bank Lending y/y",
-      "timestamp": "2026-01-12T18:50:00",
-      "impact": "low",
-      "country": "JPY",
-      "actual": null,
-      "forecast": "4.1%",
-      "previous": "4.2%"
-    },
-    {
-      "name": "Current Account",
-      "timestamp": "2026-01-12T18:50:00",
-      "impact": "low",
-      "country": "JPY",
-      "actual": null,
-      "forecast": "3.04T",
-      "previous": "2.48T"
-    },
-    {
-      "name": "BRC Retail Sales Monitor y/y",
-      "timestamp": "2026-01-12T19:01:00",
-      "impact": "low",
+      "name": "BOE Gov Bailey Speaks",
+      "timestamp": "2026-01-20T04:45:00",
+      "impact": "high",
       "country": "GBP",
       "actual": null,
-      "forecast": "1.3%",
-      "previous": "1.2%"
+      "forecast": "",
+      "previous": ""
     },
     {
-      "name": "Economy Watchers Sentiment",
-      "timestamp": "2026-01-13T00:00:00",
+      "name": "German ZEW Economic Sentiment",
+      "timestamp": "2026-01-20T05:00:00",
       "impact": "low",
-      "country": "JPY",
+      "country": "EUR",
       "actual": null,
-      "forecast": "48.7",
-      "previous": "48.7"
+      "forecast": "50.0",
+      "previous": "45.8"
     },
     {
-      "name": "French Gov Budget Balance",
-      "timestamp": "2026-01-13T03:36:00",
+      "name": "ZEW Economic Sentiment",
+      "timestamp": "2026-01-20T05:00:00",
+      "impact": "low",
+      "country": "EUR",
+      "actual": null,
+      "forecast": "36.7",
+      "previous": "33.7"
+    },
+    {
+      "name": "ECOFIN Meetings",
+      "timestamp": "2026-01-20T05:15:00",
       "impact": "low",
       "country": "EUR",
       "actual": null,
       "forecast": "",
-      "previous": "-136.2B"
-    },
-    {
-      "name": "NFIB Small Business Index",
-      "timestamp": "2026-01-13T06:00:00",
-      "impact": "low",
-      "country": "USD",
-      "actual": null,
-      "forecast": "99.5",
-      "previous": "99.0"
+      "previous": ""
     },
     {
       "name": "ADP Weekly Employment Change",
-      "timestamp": "2026-01-13T08:15:00",
-      "impact": "medium",
+      "timestamp": "2026-01-20T08:15:00",
+      "impact": "low",
       "country": "USD",
       "actual": null,
       "forecast": "",
-      "previous": "11.5K"
+      "previous": "11.8K"
     },
     {
-      "name": "Building Permits m/m",
-      "timestamp": "2026-01-13T08:30:00",
+      "name": "GDT Price Index",
+      "timestamp": "2026-01-20T09:43:00",
       "impact": "low",
-      "country": "CAD",
+      "country": "NZD",
       "actual": null,
-      "forecast": "-5.6%",
-      "previous": "14.9%"
+      "forecast": "",
+      "previous": "6.3%"
     },
     {
-      "name": "Core CPI m/m",
-      "timestamp": "2026-01-13T08:30:00",
-      "impact": "high",
-      "country": "USD",
+      "name": "SNB Chairman Schlegel Speaks",
+      "timestamp": "2026-01-20T11:30:00",
+      "impact": "medium",
+      "country": "CHF",
       "actual": null,
-      "forecast": "0.3%",
-      "previous": "0.2%"
+      "forecast": "",
+      "previous": ""
     },
     {
-      "name": "CPI m/m",
-      "timestamp": "2026-01-13T08:30:00",
-      "impact": "high",
-      "country": "USD",
+      "name": "German Buba President Nagel Speaks",
+      "timestamp": "2026-01-20T11:30:00",
+      "impact": "low",
+      "country": "EUR",
       "actual": null,
-      "forecast": "0.3%",
-      "previous": "0.3%"
+      "forecast": "",
+      "previous": ""
+    },
+    {
+      "name": "MI Leading Index m/m",
+      "timestamp": "2026-01-20T18:30:00",
+      "impact": "low",
+      "country": "AUD",
+      "actual": null,
+      "forecast": "",
+      "previous": "0.0%"
     },
     {
       "name": "CPI y/y",
-      "timestamp": "2026-01-13T08:30:00",
+      "timestamp": "2026-01-21T02:00:00",
       "impact": "high",
-      "country": "USD",
+      "country": "GBP",
       "actual": null,
-      "forecast": "2.7%",
-      "previous": "2.7%"
+      "forecast": "3.3%",
+      "previous": "3.2%"
     },
     {
-      "name": "New Home Sales",
-      "timestamp": "2026-01-13T09:59:00",
+      "name": "Core CPI y/y",
+      "timestamp": "2026-01-21T02:00:00",
       "impact": "low",
-      "country": "USD",
+      "country": "GBP",
       "actual": null,
-      "forecast": "",
-      "previous": "800K"
+      "forecast": "3.3%",
+      "previous": "3.2%"
     },
     {
-      "name": "New Home Sales",
-      "timestamp": "2026-01-13T10:00:00",
+      "name": "PPI Input m/m",
+      "timestamp": "2026-01-21T02:00:00",
+      "impact": "low",
+      "country": "GBP",
+      "actual": null,
+      "forecast": "-0.1%",
+      "previous": "0.3%"
+    },
+    {
+      "name": "PPI Output m/m",
+      "timestamp": "2026-01-21T02:00:00",
+      "impact": "low",
+      "country": "GBP",
+      "actual": null,
+      "forecast": "0.1%",
+      "previous": "0.1%"
+    },
+    {
+      "name": "RPI y/y",
+      "timestamp": "2026-01-21T02:00:00",
+      "impact": "low",
+      "country": "GBP",
+      "actual": null,
+      "forecast": "4.1%",
+      "previous": "3.8%"
+    },
+    {
+      "name": "ECB President Lagarde Speaks",
+      "timestamp": "2026-01-21T02:30:00",
       "impact": "medium",
-      "country": "USD",
-      "actual": null,
-      "forecast": "716K",
-      "previous": "738K"
-    },
-    {
-      "name": "FOMC Member Musalem Speaks",
-      "timestamp": "2026-01-13T10:00:00",
-      "impact": "low",
-      "country": "USD",
+      "country": "EUR",
       "actual": null,
       "forecast": "",
       "previous": ""
     },
     {
-      "name": "RCM/TIPP Economic Optimism",
-      "timestamp": "2026-01-13T10:03:00",
-      "impact": "low",
-      "country": "USD",
-      "actual": null,
-      "forecast": "48.2",
-      "previous": "47.9"
-    },
-    {
-      "name": "30-y Bond Auction",
-      "timestamp": "2026-01-13T13:01:00",
-      "impact": "low",
-      "country": "USD",
+      "name": "WEF Annual Meetings",
+      "timestamp": "2026-01-21T04:15:00",
+      "impact": "high",
+      "country": "All",
       "actual": null,
       "forecast": "",
-      "previous": "4.77|2.4"
+      "previous": ""
+    },
+    {
+      "name": "HPI y/y",
+      "timestamp": "2026-01-21T04:30:00",
+      "impact": "low",
+      "country": "GBP",
+      "actual": null,
+      "forecast": "1.8%",
+      "previous": "1.7%"
+    },
+    {
+      "name": "German 30-y Bond Auction",
+      "timestamp": "2026-01-21T05:34:00",
+      "impact": "low",
+      "country": "EUR",
+      "actual": null,
+      "forecast": "",
+      "previous": "3.45|2.1"
+    },
+    {
+      "name": "CBI Industrial Order Expectations",
+      "timestamp": "2026-01-21T06:00:00",
+      "impact": "low",
+      "country": "GBP",
+      "actual": null,
+      "forecast": "-33",
+      "previous": "-32"
+    },
+    {
+      "name": "IPPI m/m",
+      "timestamp": "2026-01-21T08:30:00",
+      "impact": "low",
+      "country": "CAD",
+      "actual": null,
+      "forecast": "0.3%",
+      "previous": "0.9%"
+    },
+    {
+      "name": "RMPI m/m",
+      "timestamp": "2026-01-21T08:30:00",
+      "impact": "low",
+      "country": "CAD",
+      "actual": null,
+      "forecast": "-0.5%",
+      "previous": "0.3%"
     },
     {
       "name": "President Trump Speaks",
-      "timestamp": "2026-01-13T14:00:00",
-      "impact": "medium",
+      "timestamp": "2026-01-21T08:30:00",
+      "impact": "high",
       "country": "USD",
       "actual": null,
       "forecast": "",
       "previous": ""
     },
     {
-      "name": "Federal Budget Balance",
-      "timestamp": "2026-01-13T14:00:00",
+      "name": "Pending Home Sales m/m",
+      "timestamp": "2026-01-21T10:00:00",
+      "impact": "medium",
+      "country": "USD",
+      "actual": null,
+      "forecast": "-0.5%",
+      "previous": "3.3%"
+    },
+    {
+      "name": "Construction Spending m/m",
+      "timestamp": "2026-01-21T10:00:00",
       "impact": "low",
       "country": "USD",
       "actual": null,
-      "forecast": "-144.5B",
-      "previous": "-173.3B"
+      "forecast": "0.1%",
+      "previous": ""
     },
     {
-      "name": "FOMC Member Barkin Speaks",
-      "timestamp": "2026-01-13T16:00:00",
+      "name": "Construction Spending m/m",
+      "timestamp": "2026-01-21T10:09:00",
       "impact": "low",
       "country": "USD",
+      "actual": null,
+      "forecast": "",
+      "previous": "0.2%"
+    },
+    {
+      "name": "ECB President Lagarde Speaks",
+      "timestamp": "2026-01-21T11:45:00",
+      "impact": "medium",
+      "country": "EUR",
+      "actual": null,
+      "forecast": "",
+      "previous": ""
+    },
+    {
+      "name": "German Buba President Nagel Speaks",
+      "timestamp": "2026-01-21T13:30:00",
+      "impact": "low",
+      "country": "EUR",
       "actual": null,
       "forecast": "",
       "previous": ""
     },
     {
       "name": "API Weekly Statistical Bulletin",
-      "timestamp": "2026-01-13T16:30:00",
+      "timestamp": "2026-01-21T16:30:00",
       "impact": "low",
       "country": "USD",
       "actual": null,
@@ -271,332 +550,53 @@
       "previous": ""
     },
     {
-      "name": "Building Consents m/m",
-      "timestamp": "2026-01-13T16:45:00",
+      "name": "Visitor Arrivals m/m",
+      "timestamp": "2026-01-21T16:45:00",
       "impact": "low",
       "country": "NZD",
       "actual": null,
       "forecast": "",
-      "previous": "-0.9%"
-    },
-    {
-      "name": "M2 Money Stock y/y",
-      "timestamp": "2026-01-13T18:50:00",
-      "impact": "low",
-      "country": "JPY",
-      "actual": null,
-      "forecast": "1.9%",
-      "previous": "1.8%"
-    },
-    {
-      "name": "ANZ Commodity Prices m/m",
-      "timestamp": "2026-01-13T19:00:00",
-      "impact": "low",
-      "country": "NZD",
-      "actual": null,
-      "forecast": "",
-      "previous": "-1.6%"
+      "previous": "0.6%"
     },
     {
       "name": "Trade Balance",
-      "timestamp": "2026-01-13T21:24:00",
-      "impact": "low",
-      "country": "CNY",
-      "actual": null,
-      "forecast": "805B",
-      "previous": "793B"
-    },
-    {
-      "name": "USD-Denominated Trade Balance",
-      "timestamp": "2026-01-13T21:24:00",
-      "impact": "low",
-      "country": "CNY",
-      "actual": null,
-      "forecast": "114.3B",
-      "previous": "111.7B"
-    },
-    {
-      "name": "Prelim Machine Tool Orders y/y",
-      "timestamp": "2026-01-14T01:00:00",
+      "timestamp": "2026-01-21T18:50:00",
       "impact": "low",
       "country": "JPY",
       "actual": null,
-      "forecast": "",
-      "previous": "14.2%"
+      "forecast": "-0.06T",
+      "previous": "0.06T"
     },
     {
-      "name": "MPC Member Taylor Speaks",
-      "timestamp": "2026-01-14T03:00:00",
-      "impact": "low",
-      "country": "GBP",
-      "actual": null,
-      "forecast": "",
-      "previous": ""
-    },
-    {
-      "name": "10-y Bond Auction",
-      "timestamp": "2026-01-14T05:02:00",
-      "impact": "low",
-      "country": "GBP",
-      "actual": null,
-      "forecast": "",
-      "previous": "4.61|3.1"
-    },
-    {
-      "name": "German 30-y Bond Auction",
-      "timestamp": "2026-01-14T05:36:00",
-      "impact": "low",
-      "country": "EUR",
-      "actual": null,
-      "forecast": "",
-      "previous": "3.26|1.3"
-    },
-    {
-      "name": "Core PPI m/m",
-      "timestamp": "2026-01-14T08:29:00",
-      "impact": "medium",
-      "country": "USD",
-      "actual": null,
-      "forecast": "",
-      "previous": "0.1%"
-    },
-    {
-      "name": "PPI m/m",
-      "timestamp": "2026-01-14T08:29:00",
-      "impact": "medium",
-      "country": "USD",
-      "actual": null,
-      "forecast": "",
-      "previous": "0.3%"
-    },
-    {
-      "name": "Core PPI m/m",
-      "timestamp": "2026-01-14T08:30:00",
+      "name": "Employment Change",
+      "timestamp": "2026-01-21T19:30:00",
       "impact": "high",
-      "country": "USD",
-      "actual": null,
-      "forecast": "0.2%",
-      "previous": "0.3%"
-    },
-    {
-      "name": "Core Retail Sales m/m",
-      "timestamp": "2026-01-14T08:30:00",
-      "impact": "high",
-      "country": "USD",
-      "actual": null,
-      "forecast": "0.4%",
-      "previous": "0.4%"
-    },
-    {
-      "name": "PPI m/m",
-      "timestamp": "2026-01-14T08:30:00",
-      "impact": "high",
-      "country": "USD",
-      "actual": null,
-      "forecast": "0.2%",
-      "previous": "0.1%"
-    },
-    {
-      "name": "Retail Sales m/m",
-      "timestamp": "2026-01-14T08:30:00",
-      "impact": "high",
-      "country": "USD",
-      "actual": null,
-      "forecast": "0.5%",
-      "previous": "0.0%"
-    },
-    {
-      "name": "Current Account",
-      "timestamp": "2026-01-14T08:30:00",
-      "impact": "low",
-      "country": "USD",
-      "actual": null,
-      "forecast": "-235B",
-      "previous": "-251B"
-    },
-    {
-      "name": "FOMC Member Paulson Speaks",
-      "timestamp": "2026-01-14T09:50:00",
-      "impact": "low",
-      "country": "USD",
-      "actual": null,
-      "forecast": "",
-      "previous": ""
-    },
-    {
-      "name": "Business Inventories m/m",
-      "timestamp": "2026-01-14T10:00:00",
-      "impact": "low",
-      "country": "USD",
-      "actual": null,
-      "forecast": "0.1%",
-      "previous": "0.2%"
-    },
-    {
-      "name": "Existing Home Sales",
-      "timestamp": "2026-01-14T10:00:00",
-      "impact": "low",
-      "country": "USD",
-      "actual": null,
-      "forecast": "4.21M",
-      "previous": "4.13M"
-    },
-    {
-      "name": "MPC Member Ramsden Speaks",
-      "timestamp": "2026-01-14T10:30:00",
-      "impact": "low",
-      "country": "GBP",
-      "actual": null,
-      "forecast": "",
-      "previous": ""
-    },
-    {
-      "name": "Crude Oil Inventories",
-      "timestamp": "2026-01-14T10:30:00",
-      "impact": "low",
-      "country": "USD",
-      "actual": null,
-      "forecast": "-1.7M",
-      "previous": "-3.8M"
-    },
-    {
-      "name": "FOMC Member Miran Speaks",
-      "timestamp": "2026-01-14T10:30:00",
-      "impact": "low",
-      "country": "USD",
-      "actual": null,
-      "forecast": "",
-      "previous": ""
-    },
-    {
-      "name": "FOMC Member Bostic Speaks",
-      "timestamp": "2026-01-14T12:00:00",
-      "impact": "low",
-      "country": "USD",
-      "actual": null,
-      "forecast": "",
-      "previous": ""
-    },
-    {
-      "name": "FOMC Member Kashkari Speaks",
-      "timestamp": "2026-01-14T12:00:00",
-      "impact": "low",
-      "country": "USD",
-      "actual": null,
-      "forecast": "",
-      "previous": ""
-    },
-    {
-      "name": "Beige Book",
-      "timestamp": "2026-01-14T14:00:00",
-      "impact": "low",
-      "country": "USD",
-      "actual": null,
-      "forecast": "",
-      "previous": ""
-    },
-    {
-      "name": "FOMC Member Williams Speaks",
-      "timestamp": "2026-01-14T14:10:00",
-      "impact": "low",
-      "country": "USD",
-      "actual": null,
-      "forecast": "",
-      "previous": ""
-    },
-    {
-      "name": "PPI y/y",
-      "timestamp": "2026-01-14T18:50:00",
-      "impact": "low",
-      "country": "JPY",
-      "actual": null,
-      "forecast": "2.4%",
-      "previous": "2.7%"
-    },
-    {
-      "name": "MI Inflation Expectations",
-      "timestamp": "2026-01-14T19:00:00",
-      "impact": "low",
       "country": "AUD",
       "actual": null,
-      "forecast": "",
-      "previous": "4.7%"
+      "forecast": "28.3K",
+      "previous": "-21.3K"
     },
     {
-      "name": "RICS House Price Balance",
-      "timestamp": "2026-01-14T19:01:00",
-      "impact": "low",
-      "country": "GBP",
-      "actual": null,
-      "forecast": "-17%",
-      "previous": "-16%"
-    },
-    {
-      "name": "German WPI m/m",
-      "timestamp": "2026-01-15T02:00:00",
-      "impact": "low",
-      "country": "EUR",
-      "actual": null,
-      "forecast": "0.2%",
-      "previous": "0.3%"
-    },
-    {
-      "name": "GDP m/m",
-      "timestamp": "2026-01-15T02:00:00",
+      "name": "Unemployment Rate",
+      "timestamp": "2026-01-21T19:30:00",
       "impact": "high",
-      "country": "GBP",
+      "country": "AUD",
       "actual": null,
-      "forecast": "0.1%",
-      "previous": "-0.1%"
+      "forecast": "4.4%",
+      "previous": "4.3%"
     },
     {
-      "name": "Construction Output m/m",
-      "timestamp": "2026-01-15T02:00:00",
+      "name": "Public Sector Net Borrowing",
+      "timestamp": "2026-01-22T02:00:00",
       "impact": "low",
       "country": "GBP",
       "actual": null,
-      "forecast": "-0.3%",
-      "previous": "-0.6%"
-    },
-    {
-      "name": "Goods Trade Balance",
-      "timestamp": "2026-01-15T02:00:00",
-      "impact": "low",
-      "country": "GBP",
-      "actual": null,
-      "forecast": "-20.3B",
-      "previous": "-22.5B"
-    },
-    {
-      "name": "Index of Services 3m/3m",
-      "timestamp": "2026-01-15T02:00:00",
-      "impact": "low",
-      "country": "GBP",
-      "actual": null,
-      "forecast": "0.0%",
-      "previous": "0.0%"
-    },
-    {
-      "name": "Industrial Production m/m",
-      "timestamp": "2026-01-15T02:00:00",
-      "impact": "low",
-      "country": "GBP",
-      "actual": null,
-      "forecast": "0.2%",
-      "previous": "1.1%"
-    },
-    {
-      "name": "Manufacturing Production m/m",
-      "timestamp": "2026-01-15T02:00:00",
-      "impact": "low",
-      "country": "GBP",
-      "actual": null,
-      "forecast": "0.4%",
-      "previous": "0.5%"
+      "forecast": "13.4B",
+      "previous": "11.7B"
     },
     {
       "name": "Foreign Direct Investment ytd/y",
-      "timestamp": "2026-01-15T02:02:00",
+      "timestamp": "2026-01-22T02:02:00",
       "impact": "low",
       "country": "CNY",
       "actual": null,
@@ -604,17 +604,17 @@
       "previous": "-7.5%"
     },
     {
-      "name": "French Final CPI m/m",
-      "timestamp": "2026-01-15T02:45:00",
+      "name": "WEF Annual Meetings",
+      "timestamp": "2026-01-22T04:15:00",
       "impact": "low",
-      "country": "EUR",
+      "country": "All",
       "actual": null,
-      "forecast": "0.1%",
-      "previous": "0.1%"
+      "forecast": "",
+      "previous": ""
     },
     {
-      "name": "ECB Economic Bulletin",
-      "timestamp": "2026-01-15T04:00:00",
+      "name": "German Buba Monthly Report",
+      "timestamp": "2026-01-22T06:00:00",
       "impact": "low",
       "country": "EUR",
       "actual": null,
@@ -622,302 +622,392 @@
       "previous": ""
     },
     {
-      "name": "Italian Industrial Production m/m",
-      "timestamp": "2026-01-15T04:00:00",
-      "impact": "low",
-      "country": "EUR",
-      "actual": null,
-      "forecast": "0.6%",
-      "previous": "-1.0%"
-    },
-    {
-      "name": "M2 Money Supply y/y",
-      "timestamp": "2026-01-15T04:03:00",
-      "impact": "low",
-      "country": "CNY",
-      "actual": null,
-      "forecast": "8.0%",
-      "previous": "8.0%"
-    },
-    {
-      "name": "New Loans",
-      "timestamp": "2026-01-15T04:03:00",
-      "impact": "low",
-      "country": "CNY",
-      "actual": null,
-      "forecast": "820B",
-      "previous": "390B"
-    },
-    {
-      "name": "BOE Credit Conditions Survey",
-      "timestamp": "2026-01-15T04:30:00",
+      "name": "CBI Realized Sales",
+      "timestamp": "2026-01-22T06:00:00",
       "impact": "low",
       "country": "GBP",
       "actual": null,
+      "forecast": "-35",
+      "previous": "-44"
+    },
+    {
+      "name": "ECB Monetary Policy Meeting Accounts",
+      "timestamp": "2026-01-22T07:30:00",
+      "impact": "low",
+      "country": "EUR",
+      "actual": null,
       "forecast": "",
       "previous": ""
     },
     {
-      "name": "Industrial Production m/m",
-      "timestamp": "2026-01-15T05:00:00",
-      "impact": "low",
-      "country": "EUR",
-      "actual": null,
-      "forecast": "0.5%",
-      "previous": "0.8%"
-    },
-    {
-      "name": "Trade Balance",
-      "timestamp": "2026-01-15T05:00:00",
-      "impact": "low",
-      "country": "EUR",
-      "actual": null,
-      "forecast": "14.8B",
-      "previous": "14.0B"
-    },
-    {
-      "name": "Italian Trade Balance",
-      "timestamp": "2026-01-15T06:00:00",
-      "impact": "low",
-      "country": "EUR",
-      "actual": null,
-      "forecast": "5.22B",
-      "previous": "4.16B"
-    },
-    {
-      "name": "Manufacturing Sales m/m",
-      "timestamp": "2026-01-15T08:30:00",
+      "name": "NHPI m/m",
+      "timestamp": "2026-01-22T08:30:00",
       "impact": "low",
       "country": "CAD",
       "actual": null,
-      "forecast": "-1.1%",
-      "previous": "-1.0%"
+      "forecast": "-0.2%",
+      "previous": "0.0%"
     },
     {
-      "name": "Wholesale Sales m/m",
-      "timestamp": "2026-01-15T08:30:00",
-      "impact": "low",
-      "country": "CAD",
+      "name": "Final GDP q/q",
+      "timestamp": "2026-01-22T08:30:00",
+      "impact": "high",
+      "country": "USD",
       "actual": null,
-      "forecast": "0.1%",
-      "previous": "0.1%"
+      "forecast": "4.3%",
+      "previous": "4.3%"
+    },
+    {
+      "name": "Final GDP Price Index q/q",
+      "timestamp": "2026-01-22T08:30:00",
+      "impact": "medium",
+      "country": "USD",
+      "actual": null,
+      "forecast": "3.8%",
+      "previous": "3.8%"
     },
     {
       "name": "Unemployment Claims",
-      "timestamp": "2026-01-15T08:30:00",
-      "impact": "high",
-      "country": "USD",
-      "actual": null,
-      "forecast": "215K",
-      "previous": "208K"
-    },
-    {
-      "name": "Empire State Manufacturing Index",
-      "timestamp": "2026-01-15T08:30:00",
+      "timestamp": "2026-01-22T08:30:00",
       "impact": "medium",
       "country": "USD",
       "actual": null,
-      "forecast": "0.8",
-      "previous": "-3.9"
+      "forecast": "209K",
+      "previous": "198K"
     },
     {
-      "name": "Philly Fed Manufacturing Index",
-      "timestamp": "2026-01-15T08:30:00",
-      "impact": "medium",
-      "country": "USD",
-      "actual": null,
-      "forecast": "-1.6",
-      "previous": "-10.2"
-    },
-    {
-      "name": "Import Prices m/m",
-      "timestamp": "2026-01-15T08:30:00",
-      "impact": "low",
-      "country": "USD",
-      "actual": null,
-      "forecast": "-0.1%",
-      "previous": ""
-    },
-    {
-      "name": "Import Prices m/m",
-      "timestamp": "2026-01-15T08:30:00",
-      "impact": "low",
-      "country": "USD",
-      "actual": null,
-      "forecast": "",
-      "previous": "0.0%"
-    },
-    {
-      "name": "FOMC Member Bostic Speaks",
-      "timestamp": "2026-01-15T08:35:00",
-      "impact": "low",
-      "country": "USD",
-      "actual": null,
-      "forecast": "",
-      "previous": ""
-    },
-    {
-      "name": "FOMC Member Barr Speaks",
-      "timestamp": "2026-01-15T09:15:00",
-      "impact": "low",
-      "country": "USD",
-      "actual": null,
-      "forecast": "",
-      "previous": ""
-    },
-    {
-      "name": "Natural Gas Storage",
-      "timestamp": "2026-01-15T10:30:00",
-      "impact": "low",
-      "country": "USD",
-      "actual": null,
-      "forecast": "-89B",
-      "previous": "-119B"
-    },
-    {
-      "name": "FOMC Member Barkin Speaks",
-      "timestamp": "2026-01-15T12:40:00",
-      "impact": "low",
-      "country": "USD",
-      "actual": null,
-      "forecast": "",
-      "previous": ""
-    },
-    {
-      "name": "FOMC Member Schmid Speaks",
-      "timestamp": "2026-01-15T13:30:00",
-      "impact": "low",
-      "country": "USD",
-      "actual": null,
-      "forecast": "",
-      "previous": ""
-    },
-    {
-      "name": "TIC Long-Term Purchases",
-      "timestamp": "2026-01-15T16:00:00",
-      "impact": "low",
-      "country": "USD",
-      "actual": null,
-      "forecast": "48.7B",
-      "previous": "17.5B"
-    },
-    {
-      "name": "BusinessNZ Manufacturing Index",
-      "timestamp": "2026-01-15T16:30:00",
-      "impact": "low",
-      "country": "NZD",
-      "actual": null,
-      "forecast": "",
-      "previous": "51.4"
-    },
-    {
-      "name": "FPI m/m",
-      "timestamp": "2026-01-15T16:45:00",
-      "impact": "low",
-      "country": "NZD",
-      "actual": null,
-      "forecast": "",
-      "previous": "-0.4%"
-    },
-    {
-      "name": "German Final CPI m/m",
-      "timestamp": "2026-01-16T02:00:00",
+      "name": "Consumer Confidence",
+      "timestamp": "2026-01-22T10:00:00",
       "impact": "low",
       "country": "EUR",
       "actual": null,
-      "forecast": "0.0%",
-      "previous": "0.0%"
+      "forecast": "-13",
+      "previous": "-15"
     },
     {
-      "name": "BOE Gov Bailey Speaks",
-      "timestamp": "2026-01-16T05:00:00",
+      "name": "Core PCE Price Index m/m",
+      "timestamp": "2026-01-22T10:00:00",
       "impact": "high",
-      "country": "GBP",
+      "country": "USD",
       "actual": null,
-      "forecast": "",
+      "forecast": "0.2%",
       "previous": ""
     },
     {
-      "name": "Housing Starts",
-      "timestamp": "2026-01-16T08:15:00",
-      "impact": "low",
-      "country": "CAD",
-      "actual": null,
-      "forecast": "257K",
-      "previous": "254K"
-    },
-    {
-      "name": "Foreign Securities Purchases",
-      "timestamp": "2026-01-16T08:30:00",
-      "impact": "low",
-      "country": "CAD",
-      "actual": null,
-      "forecast": "24.61B",
-      "previous": "46.62B"
-    },
-    {
-      "name": "Capacity Utilization Rate",
-      "timestamp": "2026-01-16T09:15:00",
+      "name": "Personal Income m/m",
+      "timestamp": "2026-01-22T10:00:00",
       "impact": "low",
       "country": "USD",
       "actual": null,
-      "forecast": "76.0%",
-      "previous": "76.0%"
+      "forecast": "0.4%",
+      "previous": ""
     },
     {
-      "name": "Industrial Production m/m",
-      "timestamp": "2026-01-16T09:15:00",
+      "name": "Personal Spending m/m",
+      "timestamp": "2026-01-22T10:00:00",
       "impact": "low",
       "country": "USD",
       "actual": null,
-      "forecast": "0.1%",
+      "forecast": "0.5%",
+      "previous": ""
+    },
+    {
+      "name": "Core PCE Price Index m/m",
+      "timestamp": "2026-01-22T10:10:00",
+      "impact": "medium",
+      "country": "USD",
+      "actual": null,
+      "forecast": "",
       "previous": "0.2%"
     },
     {
-      "name": "CB Leading Index m/m",
-      "timestamp": "2026-01-16T09:30:00",
-      "impact": "low",
-      "country": "GBP",
-      "actual": null,
-      "forecast": "",
-      "previous": "-0.1%"
-    },
-    {
-      "name": "NAHB Housing Market Index",
-      "timestamp": "2026-01-16T10:00:00",
+      "name": "Personal Income m/m",
+      "timestamp": "2026-01-22T10:10:00",
       "impact": "low",
       "country": "USD",
       "actual": null,
-      "forecast": "40",
-      "previous": "39"
+      "forecast": "",
+      "previous": "0.4%"
     },
     {
-      "name": "CB Leading Index m/m",
-      "timestamp": "2026-01-16T10:30:00",
+      "name": "Personal Spending m/m",
+      "timestamp": "2026-01-22T10:10:00",
       "impact": "low",
-      "country": "AUD",
+      "country": "USD",
       "actual": null,
       "forecast": "",
       "previous": "0.3%"
     },
     {
-      "name": "FOMC Member Bowman Speaks",
-      "timestamp": "2026-01-16T11:00:00",
+      "name": "Natural Gas Storage",
+      "timestamp": "2026-01-22T10:30:00",
       "impact": "low",
       "country": "USD",
+      "actual": null,
+      "forecast": "",
+      "previous": "-71B"
+    },
+    {
+      "name": "Crude Oil Inventories",
+      "timestamp": "2026-01-22T12:00:00",
+      "impact": "low",
+      "country": "USD",
+      "actual": null,
+      "forecast": "",
+      "previous": "3.4M"
+    },
+    {
+      "name": "CPI q/q",
+      "timestamp": "2026-01-22T16:45:00",
+      "impact": "high",
+      "country": "NZD",
+      "actual": null,
+      "forecast": "0.4%",
+      "previous": "1.0%"
+    },
+    {
+      "name": "Flash Manufacturing PMI",
+      "timestamp": "2026-01-22T17:00:00",
+      "impact": "low",
+      "country": "AUD",
+      "actual": null,
+      "forecast": "",
+      "previous": "52.2"
+    },
+    {
+      "name": "Flash Services PMI",
+      "timestamp": "2026-01-22T17:00:00",
+      "impact": "low",
+      "country": "AUD",
+      "actual": null,
+      "forecast": "",
+      "previous": "51.0"
+    },
+    {
+      "name": "National Core CPI y/y",
+      "timestamp": "2026-01-22T18:30:00",
+      "impact": "low",
+      "country": "JPY",
+      "actual": null,
+      "forecast": "2.4%",
+      "previous": "3.0%"
+    },
+    {
+      "name": "GfK Consumer Confidence",
+      "timestamp": "2026-01-22T19:01:00",
+      "impact": "low",
+      "country": "GBP",
+      "actual": null,
+      "forecast": "-17",
+      "previous": "-17"
+    },
+    {
+      "name": "Flash Manufacturing PMI",
+      "timestamp": "2026-01-22T19:30:00",
+      "impact": "low",
+      "country": "JPY",
+      "actual": null,
+      "forecast": "50.1",
+      "previous": "49.7"
+    },
+    {
+      "name": "BOJ Policy Rate",
+      "timestamp": "2026-01-22T22:30:00",
+      "impact": "high",
+      "country": "JPY",
+      "actual": null,
+      "forecast": "<0.75%",
+      "previous": "<0.75%"
+    },
+    {
+      "name": "Monetary Policy Statement",
+      "timestamp": "2026-01-22T22:30:00",
+      "impact": "high",
+      "country": "JPY",
       "actual": null,
       "forecast": "",
       "previous": ""
     },
     {
-      "name": "FOMC Member Jefferson Speaks",
-      "timestamp": "2026-01-16T15:30:00",
+      "name": "BOJ Outlook Report",
+      "timestamp": "2026-01-22T22:31:00",
+      "impact": "high",
+      "country": "JPY",
+      "actual": null,
+      "forecast": "",
+      "previous": ""
+    },
+    {
+      "name": "BOJ Press Conference",
+      "timestamp": "2026-01-23T01:30:00",
+      "impact": "high",
+      "country": "JPY",
+      "actual": null,
+      "forecast": "",
+      "previous": ""
+    },
+    {
+      "name": "Retail Sales m/m",
+      "timestamp": "2026-01-23T02:00:00",
+      "impact": "high",
+      "country": "GBP",
+      "actual": null,
+      "forecast": "0.0%",
+      "previous": "-0.1%"
+    },
+    {
+      "name": "French Flash Manufacturing PMI",
+      "timestamp": "2026-01-23T03:15:00",
+      "impact": "medium",
+      "country": "EUR",
+      "actual": null,
+      "forecast": "50.3",
+      "previous": "50.6"
+    },
+    {
+      "name": "French Flash Services PMI",
+      "timestamp": "2026-01-23T03:15:00",
+      "impact": "medium",
+      "country": "EUR",
+      "actual": null,
+      "forecast": "50.3",
+      "previous": "50.2"
+    },
+    {
+      "name": "German Flash Manufacturing PMI",
+      "timestamp": "2026-01-23T03:30:00",
+      "impact": "high",
+      "country": "EUR",
+      "actual": null,
+      "forecast": "47.8",
+      "previous": "47.7"
+    },
+    {
+      "name": "German Flash Services PMI",
+      "timestamp": "2026-01-23T03:30:00",
+      "impact": "high",
+      "country": "EUR",
+      "actual": null,
+      "forecast": "52.7",
+      "previous": "52.6"
+    },
+    {
+      "name": "Flash Manufacturing PMI",
+      "timestamp": "2026-01-23T04:00:00",
+      "impact": "low",
+      "country": "EUR",
+      "actual": null,
+      "forecast": "49.1",
+      "previous": "49.2"
+    },
+    {
+      "name": "Flash Services PMI",
+      "timestamp": "2026-01-23T04:00:00",
+      "impact": "low",
+      "country": "EUR",
+      "actual": null,
+      "forecast": "52.6",
+      "previous": "52.6"
+    },
+    {
+      "name": "WEF Annual Meetings",
+      "timestamp": "2026-01-23T04:15:00",
+      "impact": "medium",
+      "country": "All",
+      "actual": null,
+      "forecast": "",
+      "previous": ""
+    },
+    {
+      "name": "Flash Manufacturing PMI",
+      "timestamp": "2026-01-23T04:30:00",
+      "impact": "high",
+      "country": "GBP",
+      "actual": null,
+      "forecast": "50.6",
+      "previous": "51.2"
+    },
+    {
+      "name": "Flash Services PMI",
+      "timestamp": "2026-01-23T04:30:00",
+      "impact": "high",
+      "country": "GBP",
+      "actual": null,
+      "forecast": "51.7",
+      "previous": "52.1"
+    },
+    {
+      "name": "MPC Member Greene Speaks",
+      "timestamp": "2026-01-23T04:30:00",
+      "impact": "low",
+      "country": "GBP",
+      "actual": null,
+      "forecast": "",
+      "previous": ""
+    },
+    {
+      "name": "ECB President Lagarde Speaks",
+      "timestamp": "2026-01-23T05:00:00",
+      "impact": "medium",
+      "country": "EUR",
+      "actual": null,
+      "forecast": "",
+      "previous": ""
+    },
+    {
+      "name": "Core Retail Sales m/m",
+      "timestamp": "2026-01-23T08:30:00",
+      "impact": "medium",
+      "country": "CAD",
+      "actual": null,
+      "forecast": "1.0%",
+      "previous": "-0.6%"
+    },
+    {
+      "name": "Retail Sales m/m",
+      "timestamp": "2026-01-23T08:30:00",
+      "impact": "medium",
+      "country": "CAD",
+      "actual": null,
+      "forecast": "1.2%",
+      "previous": "-0.2%"
+    },
+    {
+      "name": "Flash Manufacturing PMI",
+      "timestamp": "2026-01-23T09:45:00",
+      "impact": "high",
+      "country": "USD",
+      "actual": null,
+      "forecast": "51.9",
+      "previous": "51.8"
+    },
+    {
+      "name": "Flash Services PMI",
+      "timestamp": "2026-01-23T09:45:00",
+      "impact": "high",
+      "country": "USD",
+      "actual": null,
+      "forecast": "52.9",
+      "previous": "52.9"
+    },
+    {
+      "name": "Revised UoM Consumer Sentiment",
+      "timestamp": "2026-01-23T10:00:00",
+      "impact": "medium",
+      "country": "USD",
+      "actual": null,
+      "forecast": "54.0",
+      "previous": "54.0"
+    },
+    {
+      "name": "Revised UoM Inflation Expectations",
+      "timestamp": "2026-01-23T10:00:00",
       "impact": "low",
       "country": "USD",
       "actual": null,
       "forecast": "",
-      "previous": ""
+      "previous": "4.2%"
     }
   ],
-  "last_update": "2026-01-15T00:32:24.679484"
+  "last_update": "2026-01-20T23:19:53.697511"
 }

@@ -302,7 +302,7 @@ class TradingBot:
             nse_shown = False
             for inst_key in get_instruments_to_scan():
                 inst = INSTRUMENTS[inst_key]
-                if inst["exchange_segment_str"] == "MCX" and not mcx_shown:
+                if inst["exchange_segment_str"] == "MCX_COMM" and not mcx_shown:
                     logging.info(
                         f"   MCX: {inst['market_start']} - {inst['market_end']} | No trades after {inst['no_new_trade_after']}"
                     )

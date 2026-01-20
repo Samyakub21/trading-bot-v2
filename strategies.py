@@ -17,9 +17,10 @@ Usage:
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional, Tuple, cast
 import pandas as pd
-from ta.trend import EMAIndicator
+from datetime import datetime
+from ta.trend import EMAIndicator, ADXIndicator
 from ta.momentum import RSIIndicator
-from ta.volatility import BollingerBands
+from ta.volatility import BollingerBands, AverageTrueRange
 import logging
 
 
@@ -64,7 +65,7 @@ class Strategy(ABC):
 
     @abstractmethod
     def analyze(
-        self, df_15: pd.DataFrame, df_60: pd.DataFrame
+        self, df_15: pd.DataFrame, df_60: pd.DataFrame, **kwargs
     ) -> Optional[Dict[str, Any]]:
         """
         Analyze price data and generate trading signal.
@@ -124,7 +125,7 @@ class TrendFollowingStrategy(Strategy):
                 self.params[key] = value
 
     def analyze(
-        self, df_15: pd.DataFrame, df_60: pd.DataFrame
+        self, df_15: pd.DataFrame, df_60: pd.DataFrame, **kwargs
     ) -> Optional[Dict[str, Any]]:
         """Analyze using trend following logic."""
         try:
@@ -248,7 +249,7 @@ class MeanReversionStrategy(Strategy):
                 self.params[key] = value
 
     def analyze(
-        self, df_15: pd.DataFrame, df_60: pd.DataFrame
+        self, df_15: pd.DataFrame, df_60: pd.DataFrame, **kwargs
     ) -> Optional[Dict[str, Any]]:
         """Analyze using mean reversion logic."""
         try:
@@ -361,17 +362,26 @@ class MomentumBreakoutStrategy(Strategy):
             "rsi_max_bearish": 45,
             "rsi_length": 14,
             "volume_multiplier": 1.5,  # Strong volume required
-            "atr_multiplier": 1.0,
+            "atr_multiplier": 1.5,  # ATR multiplier for stop loss
+            "atr_length": 14,  # ATR period
         }
         for key, value in defaults.items():
             if key not in self.params:
                 self.params[key] = value
 
     def analyze(
-        self, df_15: pd.DataFrame, df_60: pd.DataFrame
+        self, df_15: pd.DataFrame, df_60: pd.DataFrame, **kwargs
     ) -> Optional[Dict[str, Any]]:
         """Analyze using momentum breakout logic."""
         try:
+            # Time filter for MIDCPNIFTY: No signals between 11:30 AM and 1:30 PM IST
+            if self.instrument == "MIDCPNIFTY":
+                current_time = datetime.now().time()
+                no_trade_start = datetime.strptime("11:30", "%H:%M").time()
+                no_trade_end = datetime.strptime("13:30", "%H:%M").time()
+                if no_trade_start <= current_time <= no_trade_end:
+                    return None
+
             # Get parameters
             lookback = self.get_param("lookback_period", 20)
             breakout_pct = self.get_param("breakout_threshold", 0.005)
@@ -379,9 +389,13 @@ class MomentumBreakoutStrategy(Strategy):
             rsi_max_bear = self.get_param("rsi_max_bearish", 45)
             rsi_len = self.get_param("rsi_length", 14)
             volume_mult = self.get_param("volume_multiplier", 1.5)
+            atr_mult = self.get_param("atr_multiplier", 1.5)
+            atr_len = self.get_param("atr_length", 14)
 
             # Calculate indicators
             df_15["RSI"] = RSIIndicator(close=df_15["close"], window=rsi_len).rsi()
+            df_15["ADX"] = ADXIndicator(high=df_15["high"], low=df_15["low"], close=df_15["close"], window=14).adx()
+            df_15["ATR"] = AverageTrueRange(high=df_15["high"], low=df_15["low"], close=df_15["close"], window=atr_len).average_true_range()
             df_15["vol_avg"] = df_15["volume"].rolling(window=20).mean()
 
             # Calculate recent high/low
@@ -393,6 +407,8 @@ class MomentumBreakoutStrategy(Strategy):
 
             price = trigger["close"]
             rsi_val = trigger["RSI"]
+            adx_val = trigger["ADX"]
+            atr_val = trigger["ATR"]
             recent_high = prev["recent_high"]  # Use previous candle's level
             recent_low = prev["recent_low"]
             current_volume = trigger["volume"]
@@ -405,28 +421,188 @@ class MomentumBreakoutStrategy(Strategy):
                 else False
             )
 
+            # ADX filter: Only allow signals if trend strength is sufficient (ADX > 25)
+            adx_confirmed = adx_val > 25
+
             signal = None
             signal_strength = 0
+            stop_loss = 0
 
             # Calculate breakout levels
             upper_breakout = recent_high * (1 + breakout_pct)
             lower_breakout = recent_low * (1 - breakout_pct)
 
             # BULLISH Breakout
-            if price > upper_breakout and rsi_val > rsi_min_bull and volume_confirmed:
+            if price > upper_breakout and rsi_val > rsi_min_bull and volume_confirmed and adx_confirmed:
                 signal = "BUY"
                 breakout_strength = (price - recent_high) / recent_high * 100
                 signal_strength = breakout_strength + (rsi_val - rsi_min_bull)
                 if avg_volume > 0:
                     signal_strength += (current_volume / avg_volume - 1) * 20
+                # Calculate ATR-based stop loss for BUY
+                stop_loss = price - (atr_val * atr_mult)
 
             # BEARISH Breakout
-            elif price < lower_breakout and rsi_val < rsi_max_bear and volume_confirmed:
+            elif price < lower_breakout and rsi_val < rsi_max_bear and volume_confirmed and adx_confirmed:
                 signal = "SELL"
                 breakout_strength = (recent_low - price) / recent_low * 100
                 signal_strength = breakout_strength + (rsi_max_bear - rsi_val)
                 if avg_volume > 0:
                     signal_strength += (current_volume / avg_volume - 1) * 20
+                # Calculate ATR-based stop loss for SELL
+                stop_loss = price + (atr_val * atr_mult)
+
+            if signal:
+                return {
+                    "instrument": self.instrument,
+                    "signal": signal,
+                    "price": price,
+                    "rsi": rsi_val,
+                    "adx": adx_val,
+                    "volume": current_volume,
+                    "avg_volume": avg_volume,
+                    "recent_high": recent_high,
+                    "recent_low": recent_low,
+                    "signal_strength": signal_strength,
+                    "stop_loss": round(stop_loss, 2),
+                    "strategy": self.name,
+                    "df_15": df_15,
+                }
+
+            return None
+
+        except Exception as e:
+            logging.error(f"[{self.name}] Analysis error for {self.instrument}: {e}")
+            return None
+
+
+# =============================================================================
+# FINNIFTY SPECIFIC STRATEGY
+# =============================================================================
+
+
+class FinniftySpecificStrategy(Strategy):
+    """
+    Finnifty Specific Strategy with sector correlation and time filters.
+
+    Best suited for: FINNIFTY (Nifty Financial Services)
+
+    Features:
+    - Sector correlation check with BANKNIFTY EMA50
+    - Time filter preventing entries between 11:30 AM - 1:30 PM
+    - 1:2 Risk-to-Reward ratio for quick scalps
+
+    Entry Rules:
+    - BUY: Price > EMA50 (60min), Price > VWAP (15min), RSI > 58, BANKNIFTY > EMA50, outside time filter
+    - SELL: Price < EMA50 (60min), Price < VWAP (15min), RSI < 42, outside time filter
+    """
+
+    def _set_default_params(self) -> None:
+        """Set default parameters for Finnifty specific strategy."""
+        defaults = {
+            "rsi_bullish_threshold": 58,
+            "rsi_bearish_threshold": 42,
+            "rsi_length": 14,
+            "ema_length": 50,
+            "volume_multiplier": 1.2,
+            "volume_window": 20,
+        }
+        for key, value in defaults.items():
+            if key not in self.params:
+                self.params[key] = value
+
+    def analyze(
+        self, df_15: pd.DataFrame, df_60: pd.DataFrame, **kwargs
+    ) -> Optional[Dict[str, Any]]:
+        """Analyze using Finnifty specific logic with correlation and time filters."""
+        try:
+            # Time filter: No new entries between 11:30 AM and 1:30 PM IST
+            current_time = datetime.now().time()
+            no_trade_start = datetime.strptime("11:30", "%H:%M").time()
+            no_trade_end = datetime.strptime("13:30", "%H:%M").time()
+            if no_trade_start <= current_time <= no_trade_end:
+                return None
+
+            # Get parameters
+            rsi_bullish = self.get_param("rsi_bullish_threshold", 58)
+            rsi_bearish = self.get_param("rsi_bearish_threshold", 42)
+            rsi_len = self.get_param("rsi_length", 14)
+            ema_len = self.get_param("ema_length", 50)
+            volume_mult = self.get_param("volume_multiplier", 1.2)
+            vol_window = self.get_param("volume_window", 20)
+
+            # Calculate indicators
+            # 1. EMA on 60min
+            df_60["EMA"] = EMAIndicator(
+                close=df_60["close"], window=ema_len
+            ).ema_indicator()
+            # 2. RSI on 15min
+            df_15["RSI"] = RSIIndicator(close=df_15["close"], window=rsi_len).rsi()
+            # 3. VWAP (Custom Anchored)
+            df_15["VWAP_D"] = calculate_anchored_vwap(df_15)
+            df_15["vol_avg"] = df_15["volume"].rolling(window=vol_window).mean()
+
+            trend = df_60.iloc[-2]
+            trigger = df_15.iloc[-2]
+
+            price = trigger["close"]
+            vwap_val = trigger.get("VWAP_D", 0)
+            current_volume = trigger["volume"]
+            avg_volume = trigger.get("vol_avg", current_volume)
+            rsi_val = trigger["RSI"]
+            ema_val = trend["EMA"]
+            trend_close = trend["close"]
+
+            # Volume confirmation
+            volume_confirmed = (
+                current_volume >= (avg_volume * volume_mult) if avg_volume > 0 else True
+            )
+
+            # Sector correlation check for BANKNIFTY
+            banknifty_df_60 = kwargs.get("banknifty_df_60")
+            banknifty_correlation_ok = True
+            if banknifty_df_60 is not None and not banknifty_df_60.empty:
+                try:
+                    banknifty_ema = EMAIndicator(
+                        close=banknifty_df_60["close"], window=50
+                    ).ema_indicator()
+                    banknifty_close = banknifty_df_60.iloc[-2]["close"]
+                    banknifty_correlation_ok = banknifty_close > banknifty_ema.iloc[-2]
+                except Exception as e:
+                    logging.warning(f"[{self.name}] Could not check BANKNIFTY correlation: {e}")
+                    banknifty_correlation_ok = True  # Default to allow if check fails
+
+            signal = None
+            signal_strength = 0
+
+            # BULLISH Signal
+            if (
+                (trend_close > ema_val)
+                and (trigger["close"] > vwap_val)
+                and (rsi_val > rsi_bullish)
+                and volume_confirmed
+                and banknifty_correlation_ok
+            ):
+                signal = "BUY"
+                signal_strength = (rsi_val - rsi_bullish) + (
+                    (trend_close - ema_val) / ema_val * 100
+                )
+                if avg_volume > 0:
+                    signal_strength += (current_volume / avg_volume - 1) * 10
+
+            # BEARISH Signal
+            elif (
+                (trend_close < ema_val)
+                and (trigger["close"] < vwap_val)
+                and (rsi_val < rsi_bearish)
+                and volume_confirmed
+            ):
+                signal = "SELL"
+                signal_strength = (rsi_bearish - rsi_val) + (
+                    (ema_val - trend_close) / ema_val * 100
+                )
+                if avg_volume > 0:
+                    signal_strength += (current_volume / avg_volume - 1) * 10
 
             if signal:
                 return {
@@ -436,11 +612,12 @@ class MomentumBreakoutStrategy(Strategy):
                     "rsi": rsi_val,
                     "volume": current_volume,
                     "avg_volume": avg_volume,
-                    "recent_high": recent_high,
-                    "recent_low": recent_low,
+                    "vwap": vwap_val,
+                    "ema": ema_val,
                     "signal_strength": signal_strength,
                     "strategy": self.name,
                     "df_15": df_15,
+                    "risk_reward_ratio": 2.0,  # 1:2 R:R for FINNIFTY scalps
                 }
 
             return None
@@ -457,11 +634,13 @@ class MomentumBreakoutStrategy(Strategy):
 # Default strategy assignments per instrument
 DEFAULT_STRATEGY_MAP = {
     "CRUDEOIL": "TrendFollowing",
-    "NATURALGAS": "MomentumBreakout",
+    # "NATURALGAS": "MomentumBreakout",
+    "NATGASMINI": "MomentumBreakout",
     # "GOLD": "TrendFollowing",
     # "SILVER": "MomentumBreakout",
     "NIFTY": "TrendFollowing",  # Can switch to MeanReversion for ranging markets
     "BANKNIFTY": "TrendFollowing",
+    "FINNIFTY": "FinniftySpecific",
 }
 
 # Strategy class registry
@@ -469,6 +648,7 @@ STRATEGY_CLASSES = {
     "TrendFollowing": TrendFollowingStrategy,
     "MeanReversion": MeanReversionStrategy,
     "MomentumBreakout": MomentumBreakoutStrategy,
+    "FinniftySpecific": FinniftySpecificStrategy,
 }
 
 

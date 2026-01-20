@@ -29,12 +29,35 @@ INSTRUMENTS = {
             "ema_length": 50,
         },
     },
-    "NATURALGAS": {
-        "name": "NATURAL GAS",
+    # "NATURALGAS": {
+    #     "name": "NATURAL GAS",
+    #     "exchange_segment_int": 5,  # marketfeed.MCX_COMM (V2)
+    #     "exchange_segment_str": "MCX_COMM",  # V2 API: MCX_COMM for commodities
+    #     "future_id": "465123",  # <--- UPDATE with actual ID
+    #     "lot_size": 1250,
+    #     "strike_step": 5,
+    #     "expiry_date": "2026-01-27",
+    #     "instrument_type": "FUTCOM",  # V2 API: FUTCOM for commodity futures
+    #     "option_type": "OPTFUT",
+    #     "market_start": "09:00",
+    #     "market_end": "23:30",
+    #     "no_new_trade_after": "23:00",
+    #     # Per-instrument strategy parameters (NatGas is volatile - use momentum)
+    #     "strategy": "MomentumBreakout",
+    #     "strategy_params": {
+    #         "rsi_min_bullish": 55,
+    #         "rsi_max_bearish": 45,
+    #         "volume_multiplier": 1.5,  # Need strong volume for NatGas
+    #         "lookback_period": 15,
+    #         "breakout_threshold": 0.008,  # Higher threshold for volatile NatGas
+    #     },
+    # },
+    "NATGASMINI": {
+        "name": "NATURAL GAS MINI",
         "exchange_segment_int": 5,  # marketfeed.MCX_COMM (V2)
         "exchange_segment_str": "MCX_COMM",  # V2 API: MCX_COMM for commodities
-        "future_id": "465123",  # <--- UPDATE with actual ID
-        "lot_size": 1250,
+        "future_id": "465124",  # <--- UPDATE with actual active Mini ID from Dhan dashboard
+        "lot_size": 250,
         "strike_step": 5,
         "expiry_date": "2026-01-27",
         "instrument_type": "FUTCOM",  # V2 API: FUTCOM for commodity futures
@@ -42,14 +65,15 @@ INSTRUMENTS = {
         "market_start": "09:00",
         "market_end": "23:30",
         "no_new_trade_after": "23:00",
-        # Per-instrument strategy parameters (NatGas is volatile - use momentum)
+        # Per-instrument strategy parameters
         "strategy": "MomentumBreakout",
         "strategy_params": {
             "rsi_min_bullish": 55,
             "rsi_max_bearish": 45,
-            "volume_multiplier": 1.5,  # Need strong volume for NatGas
+            "volume_multiplier": 1.5,  # Need strong volume for NatGas Mini
             "lookback_period": 15,
-            "breakout_threshold": 0.008,  # Higher threshold for volatile NatGas
+            "breakout_threshold": 0.008,  # 0.8% breakout threshold
+            "atr_multiplier": 1.5,  # 1.5x ATR for stop loss
         },
     },
     # "GOLD": {
@@ -141,6 +165,50 @@ INSTRUMENTS = {
             "ema_length": 50,
         },
     },
+    "MIDCPNIFTY": {
+        "name": "NIFTY MIDCAP SELECT",
+        "exchange_segment_int": 2,  # marketfeed.NSE_FNO
+        "exchange_segment_str": "NSE_FNO",  # V2 API: NSE_FNO for F&O
+        "future_id": "16",  # MIDCPNIFTY underlying ID
+        "lot_size": 120,
+        "strike_step": 25,
+        "expiry_date": "2026-01-16",
+        "instrument_type": "INDEX",  # V2 API: INDEX for index underlying
+        "option_type": "OPTIDX",  # V2 API: OPTIDX for index options
+        "market_start": "09:15",  # NSE trading hours
+        "market_end": "15:30",
+        "no_new_trade_after": "15:00",
+        # Per-instrument strategy parameters (MIDCPNIFTY - momentum breakout)
+        "strategy": "MomentumBreakout",
+        "strategy_params": {
+            "rsi_min_bullish": 62,
+            "rsi_max_bearish": 38,
+            "volume_multiplier": 1.5,
+            "lookback_period": 20,
+        },
+    },
+    "FINNIFTY": {
+        "name": "NIFTY FIN SERVICE",
+        "exchange_segment_int": 2,  # marketfeed.NSE_FNO
+        "exchange_segment_str": "NSE_FNO",  # V2 API: NSE_FNO for F&O
+        "future_id": "27",  # FINNIFTY underlying ID
+        "lot_size": 65,
+        "strike_step": 50,
+        "expiry_date": "2026-01-16",
+        "instrument_type": "INDEX",  # V2 API: INDEX for index underlying
+        "option_type": "OPTIDX",  # V2 API: OPTIDX for index options
+        "market_start": "09:15",  # NSE trading hours
+        "market_end": "15:30",
+        "no_new_trade_after": "15:00",
+        # Per-instrument strategy parameters (FINNIFTY - dedicated strategy)
+        "strategy": "FinniftySpecific",
+        "strategy_params": {
+            "rsi_bullish_threshold": 58,
+            "rsi_bearish_threshold": 42,
+            "volume_multiplier": 1.2,
+            "ema_length": 50,
+        },
+    },
 }
 
 # =============================================================================
@@ -159,11 +227,14 @@ MULTI_SCAN_ENABLED = True  # Set to False to use single-instrument mode
 # Higher priority instruments are preferred (1=highest)
 INSTRUMENT_PRIORITY = {
     "CRUDEOIL": 1,
-    "GOLD": 2,
-    "SILVER": 3,
-    "NATURALGAS": 4,
-    "NIFTY": 5,
-    "BANKNIFTY": 6,
+    # "GOLD": 2,
+    # "SILVER": 3,
+    # "NATURALGAS": 4,
+    "NATGASMINI": 4,
+    "NIFTY": 2,
+    "BANKNIFTY": 3,
+    "MIDCPNIFTY": 5,
+    "FINNIFTY": 6,
 }
 
 

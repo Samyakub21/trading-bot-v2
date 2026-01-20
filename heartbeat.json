@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-01-15T00:37:47.192598",
+  "timestamp": "2026-01-20T23:23:26.151511",
   "status": "stopped",
   "active_trade": false,
   "instrument": null,
@@ -9,5 +9,5 @@
   "threads_active": 0,
   "error_count": 0,
   "last_error": null,
-  "pid": 13236
+  "pid": 24100
 }

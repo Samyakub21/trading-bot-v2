@@ -233,7 +233,7 @@ def get_resampled_data(
 
 
 def analyze_instrument_signal(
-    instrument_key: str, df_15: pd.DataFrame, df_60: pd.DataFrame
+    instrument_key: str, df_15: pd.DataFrame, df_60: pd.DataFrame, **kwargs
 ) -> Optional[Dict[str, Any]]:
     if USE_STRATEGY_PATTERN and STRATEGIES_AVAILABLE:
         try:
@@ -244,7 +244,7 @@ def analyze_instrument_signal(
             )
 
             strategy = get_strategy(instrument_key, strategy_name, strategy_params)
-            signal_info = strategy.analyze(df_15.copy(), df_60.copy())
+            signal_info = strategy.analyze(df_15.copy(), df_60.copy(), **kwargs)
 
             if signal_info:
                 logging.debug(f"[{strategy.name}] {instrument_key}: Signal generated")
@@ -705,7 +705,7 @@ def get_resampled_data(
 
 
 def analyze_instrument_signal(
-    instrument_key: str, df_15: pd.DataFrame, df_60: pd.DataFrame
+    instrument_key: str, df_15: pd.DataFrame, df_60: pd.DataFrame, **kwargs
 ) -> Optional[Dict[str, Any]]:
     """
     Analyze an instrument and return signal info if in trade zone.
@@ -726,7 +726,7 @@ def analyze_instrument_signal(
             )
 
             strategy = get_strategy(instrument_key, strategy_name, strategy_params)
-            signal_info = strategy.analyze(df_15.copy(), df_60.copy())
+            signal_info = strategy.analyze(df_15.copy(), df_60.copy(), **kwargs)
 
             if signal_info:
                 logging.debug(f"[{strategy.name}] {instrument_key}: Signal generated")
@@ -846,23 +846,27 @@ def scan_all_instruments() -> List[Dict[str, Any]]:
     """Scan all configured instruments and return those in trade zone"""
     instruments_to_scan = get_instruments_to_scan()
     signals_found: List[Dict[str, Any]] = []
+    scannable_count = 0
 
     logging.info(
         f"🔍 Scanning {len(instruments_to_scan)} instruments: {', '.join(instruments_to_scan)}"
     )
 
+    scannable_count = 0
     for inst_key in instruments_to_scan:
         # Check if market is open for this instrument
         market_open, market_msg = is_instrument_market_open(inst_key)
         if not market_open:
-            logging.debug(f"   ⏰ {inst_key}: {market_msg}")
+            logging.info(f"   ⏰ {inst_key}: {market_msg} - SKIPPED")
             continue
 
         # Check if new trades are allowed
         can_trade, trade_msg = can_instrument_trade_new(inst_key)
         if not can_trade:
-            logging.debug(f"   ⏰ {inst_key}: {trade_msg}")
+            logging.info(f"   ⏰ {inst_key}: {trade_msg} - SKIPPED")
             continue
+
+        scannable_count += 1
 
         # Get data for this instrument
         time.sleep(1)
@@ -872,7 +876,23 @@ def scan_all_instruments() -> List[Dict[str, Any]]:
             continue
 
         # Analyze for signals
-        signal_info = analyze_instrument_signal(inst_key, df_15, df_60)
+        kwargs = {}
+        if inst_key == "FINNIFTY":
+            # Get BANKNIFTY data for correlation check
+            try:
+                banknifty_config = INSTRUMENTS.get("BANKNIFTY", {})
+                if banknifty_config:
+                    banknifty_df_15, banknifty_df_60 = get_instrument_data(
+                        future_id=banknifty_config.get("future_id"),
+                        exchange_segment_str=banknifty_config.get("exchange_segment_str"),
+                        instrument_type=banknifty_config.get("instrument_type")
+                    )
+                    if banknifty_df_60 is not None:
+                        kwargs["banknifty_df_60"] = banknifty_df_60
+            except Exception as e:
+                logging.warning(f"Could not get BANKNIFTY data for FINNIFTY correlation: {e}")
+        
+        signal_info = analyze_instrument_signal(inst_key, df_15, df_60, **kwargs)
         if signal_info:
             signals_found.append(signal_info)
             signal_type = (
@@ -883,6 +903,12 @@ def scan_all_instruments() -> List[Dict[str, Any]]:
             )
         else:
             logging.debug(f"   ⏸️ {inst_key}: No signal (not in trade zone)")
+
+    # Log summary of scannable instruments
+    if scannable_count == 0:
+        logging.info(f"📊 No instruments are currently in market hours")
+    else:
+        logging.info(f"📊 {scannable_count} instrument(s) are in market hours")
 
     # Sort by priority first, then by signal strength
     if signals_found:
@@ -1314,6 +1340,7 @@ def execute_trade_entry(
     df_15: pd.DataFrame,
     active_trade: Dict[str, Any],
     atm_strike: int = 0,
+    signal_info: Optional[Dict[str, Any]] = None,
 ) -> bool:
     """Execute a trade entry for a specific instrument"""
     inst = INSTRUMENTS[inst_key]
@@ -1370,7 +1397,11 @@ def execute_trade_entry(
         )
     socket_handler.set_option_ltp(option_entry_price)
 
-    dynamic_sl = get_dynamic_sl(signal, df_15)
+    # Use strategy-provided stop loss if available, otherwise calculate dynamically
+    if signal_info and "stop_loss" in signal_info:
+        dynamic_sl = signal_info["stop_loss"]
+    else:
+        dynamic_sl = get_dynamic_sl(signal, df_15)
 
     # Calculate option SL based on future SL (approximate option price movement)
     # Option premium SL ~ 70-80% of entry for ATM options
@@ -1596,6 +1627,7 @@ def run_scanner(active_trade: Dict[str, Any], active_instrument: str) -> None:
                                     df_15=df_15,
                                     active_trade=active_trade,
                                     atm_strike=atm_strike,
+                                    signal_info=None,  # Manual trade, no strategy signal info
                                 )
 
                                 if trade_executed:
@@ -1751,6 +1783,7 @@ def run_scanner(active_trade: Dict[str, Any], active_instrument: str) -> None:
                             df_15=df_15,
                             active_trade=active_trade,
                             atm_strike=atm_strike,
+                            signal_info=signal_info,
                         )
 
                         if trade_executed:
@@ -1764,7 +1797,7 @@ def run_scanner(active_trade: Dict[str, Any], active_instrument: str) -> None:
                         cast(str, inst["market_start"]), cast(str, inst["market_end"])
                     )
                     if not market_open:
-                        logging.debug(f"⏰ {market_msg}")
+                        logging.info(f"⏰ {active_instrument}: {market_msg} - SKIPPED")
                         time.sleep(60)
                         continue
 
@@ -1772,7 +1805,7 @@ def run_scanner(active_trade: Dict[str, Any], active_instrument: str) -> None:
                         cast(str, inst["no_new_trade_after"])
                     )
                     if not can_trade:
-                        logging.debug(f"⏰ {trade_msg}")
+                        logging.info(f"⏰ {active_instrument}: {trade_msg} - SKIPPED")
                         time.sleep(60)
                         continue
 
@@ -1783,8 +1816,24 @@ def run_scanner(active_trade: Dict[str, Any], active_instrument: str) -> None:
                     )
 
                     if df_15 is not None and df_60 is not None:
+                        kwargs = {}
+                        if active_instrument == "FINNIFTY":
+                            # Get BANKNIFTY data for correlation check
+                            try:
+                                banknifty_config = INSTRUMENTS.get("BANKNIFTY", {})
+                                if banknifty_config:
+                                    banknifty_df_15, banknifty_df_60 = get_instrument_data(
+                                        future_id=banknifty_config.get("future_id"),
+                                        exchange_segment_str=banknifty_config.get("exchange_segment_str"),
+                                        instrument_type=banknifty_config.get("instrument_type")
+                                    )
+                                    if banknifty_df_60 is not None:
+                                        kwargs["banknifty_df_60"] = banknifty_df_60
+                            except Exception as e:
+                                logging.warning(f"Could not get BANKNIFTY data for FINNIFTY correlation: {e}")
+                        
                         signal_data: Optional[Dict[str, Any]] = (
-                            analyze_instrument_signal(active_instrument, df_15, df_60)
+                            analyze_instrument_signal(active_instrument, df_15, df_60, **kwargs)
                         )
 
                         if signal_data is not None:
@@ -1851,6 +1900,7 @@ def run_scanner(active_trade: Dict[str, Any], active_instrument: str) -> None:
                                     df_15=df_15,
                                     active_trade=active_trade,
                                     atm_strike=atm_strike,
+                                    signal_info=signal_data,
                                 )
 
             time.sleep(60)
