@@ -52,51 +52,51 @@ INSTRUMENTS = {
             "breakout_threshold": 0.008,  # Higher threshold for volatile NatGas
         },
     },
-    "GOLD": {
-        "name": "GOLD",
-        "exchange_segment_int": 5,  # marketfeed.MCX_COMM (V2)
-        "exchange_segment_str": "MCX_COMM",  # V2 API: MCX_COMM for commodities
-        "future_id": "465200",  # <--- UPDATE with actual ID
-        "lot_size": 10,
-        "strike_step": 100,
-        "expiry_date": "2026-02-05",
-        "instrument_type": "FUTCOM",  # V2 API: FUTCOM for commodity futures
-        "option_type": "OPTFUT",
-        "market_start": "09:00",
-        "market_end": "23:30",
-        "no_new_trade_after": "23:00",
-        # Per-instrument strategy parameters (Gold - stable trend follower)
-        "strategy": "TrendFollowing",
-        "strategy_params": {
-            "rsi_bullish_threshold": 60,
-            "rsi_bearish_threshold": 40,
-            "volume_multiplier": 1.1,  # Gold has consistent volume
-            "ema_length": 50,
-        },
-    },
-    "SILVER": {
-        "name": "SILVER",
-        "exchange_segment_int": 5,  # marketfeed.MCX_COMM (V2)
-        "exchange_segment_str": "MCX_COMM",  # V2 API: MCX_COMM for commodities
-        "future_id": "465300",  # <--- UPDATE with actual ID
-        "lot_size": 30,
-        "strike_step": 500,
-        "expiry_date": "2026-02-05",
-        "instrument_type": "FUTCOM",  # V2 API: FUTCOM for commodity futures
-        "option_type": "OPTFUT",
-        "market_start": "09:00",
-        "market_end": "23:30",
-        "no_new_trade_after": "23:00",
-        # Per-instrument strategy parameters (Silver - more volatile than gold)
-        "strategy": "MomentumBreakout",
-        "strategy_params": {
-            "rsi_min_bullish": 55,
-            "rsi_max_bearish": 45,
-            "volume_multiplier": 1.3,
-            "lookback_period": 20,
-            "breakout_threshold": 0.006,
-        },
-    },
+    #"GOLD": {
+    #    "name": "GOLD",
+    #    "exchange_segment_int": 5,  # marketfeed.MCX_COMM (V2)
+    #    "exchange_segment_str": "MCX_COMM",  # V2 API: MCX_COMM for commodities
+    #    "future_id": "465200",  # <--- UPDATE with actual ID
+    #    "lot_size": 10,
+    #    "strike_step": 100,
+    #    "expiry_date": "2026-02-05",
+    #    "instrument_type": "FUTCOM",  # V2 API: FUTCOM for commodity futures
+    #    "option_type": "OPTFUT",
+    #    "market_start": "09:00",
+    #    "market_end": "23:30",
+    #    "no_new_trade_after": "23:00",
+    #    # Per-instrument strategy parameters (Gold - stable trend follower)
+    #    "strategy": "TrendFollowing",
+    #    "strategy_params": {
+    #        "rsi_bullish_threshold": 60,
+    #        "rsi_bearish_threshold": 40,
+    #        "volume_multiplier": 1.1,  # Gold has consistent volume
+    #        "ema_length": 50,
+    #    },
+    #},
+    #"SILVER": {
+    #    "name": "SILVER",
+    #    "exchange_segment_int": 5,  # marketfeed.MCX_COMM (V2)
+    #    "exchange_segment_str": "MCX_COMM",  # V2 API: MCX_COMM for commodities
+    #    "future_id": "465300",  # <--- UPDATE with actual ID
+    #    "lot_size": 30,
+    #    "strike_step": 500,
+    #    "expiry_date": "2026-02-05",
+    #    "instrument_type": "FUTCOM",  # V2 API: FUTCOM for commodity futures
+    #    "option_type": "OPTFUT",
+    #    "market_start": "09:00",
+    #    "market_end": "23:30",
+    #    "no_new_trade_after": "23:00",
+    #    # Per-instrument strategy parameters (Silver - more volatile than gold)
+    #    "strategy": "MomentumBreakout",
+    #    "strategy_params": {
+    #        "rsi_min_bullish": 55,
+    #        "rsi_max_bearish": 45,
+    #        "volume_multiplier": 1.3,
+    #        "lookback_period": 20,
+    #        "breakout_threshold": 0.006,
+    #    },
+    #},
     "NIFTY": {
         "name": "NIFTY 50",
         "exchange_segment_int": 2,  # marketfeed.NSE_FNO

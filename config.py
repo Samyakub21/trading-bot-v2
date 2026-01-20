@@ -51,15 +51,15 @@ DEFAULT_TRADING_CONFIG = {
     "ENABLED_INSTRUMENTS": [
         "CRUDEOIL",
         "NATURALGAS",
-        "GOLD",
-        "SILVER",
+        #"GOLD",
+        #"SILVER",
         "NIFTY",
         "BANKNIFTY",
     ],
     "INSTRUMENT_PRIORITY": {
         "CRUDEOIL": 3,
-        "GOLD": 5,
-        "SILVER": 6,  # Lowest priority
+        #"GOLD": 5,
+        #"SILVER": 6,  # Lowest priority
         "NATURALGAS": 4,
         "NIFTY": 1,  # Highest priority
         "BANKNIFTY": 2,
@@ -305,7 +305,7 @@ class Config:
     def ENABLED_INSTRUMENTS(self) -> list:
         return self._trading_config.get(
             "ENABLED_INSTRUMENTS",
-            ["CRUDEOIL", "NATURALGAS", "GOLD", "SILVER", "NIFTY", "BANKNIFTY"],
+            ["CRUDEOIL", "NATURALGAS", "NIFTY", "BANKNIFTY"],
         )
 
     @property
@@ -314,8 +314,8 @@ class Config:
             "INSTRUMENT_PRIORITY",
             {
                 "CRUDEOIL": 1,
-                "GOLD": 2,
-                "SILVER": 3,
+                #"GOLD": 2,
+                #"SILVER": 3,
                 "NATURALGAS": 4,
                 "NIFTY": 5,
                 "BANKNIFTY": 6,

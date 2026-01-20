@@ -697,7 +697,7 @@ WEBSOCKET_STATUS_FILE = DATA_DIR / "websocket_status.json"
 PROMETHEUS_PORT = 8000
 
 # Instruments list for quick reference (use INSTRUMENTS from instruments.py for full config)
-INSTRUMENTS_LIST = ["CRUDEOIL", "NATURALGAS", "GOLD", "SILVER", "NIFTY", "BANKNIFTY"]
+INSTRUMENTS_LIST = ["CRUDEOIL", "NATURALGAS", "NIFTY", "BANKNIFTY"]
 
 # =============================================================================
 # PROMETHEUS METRICS
@@ -2287,8 +2287,8 @@ def render_settings_page():
             "INSTRUMENT_PRIORITY",
             {
                 "CRUDEOIL": 1,
-                "GOLD": 2,
-                "SILVER": 3,
+                #"GOLD": 2,
+                #"SILVER": 3,
                 "NATURALGAS": 4,
                 "NIFTY": 5,
                 "BANKNIFTY": 6,

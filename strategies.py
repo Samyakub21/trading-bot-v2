@@ -102,7 +102,7 @@ class TrendFollowingStrategy(Strategy):
     """
     Trend Following Strategy using RSI, EMA, and VWAP.
 
-    Best suited for: Commodities (CRUDEOIL, GOLD, SILVER, NATURALGAS)
+    Best suited for: Commodities (CRUDEOIL, NATURALGAS)
 
     Entry Rules:
     - BUY: Price > EMA50 (60min), Price > VWAP (15min), RSI > bullish_threshold
@@ -345,7 +345,7 @@ class MomentumBreakoutStrategy(Strategy):
     """
     Momentum Breakout Strategy using price breakouts with volume confirmation.
 
-    Best suited for: Volatile commodities (NATURALGAS, SILVER)
+    Best suited for: Volatile commodities (NATURALGAS)
 
     Entry Rules:
     - BUY: Price breaks above recent high with strong volume and RSI momentum
@@ -458,8 +458,8 @@ class MomentumBreakoutStrategy(Strategy):
 DEFAULT_STRATEGY_MAP = {
     "CRUDEOIL": "TrendFollowing",
     "NATURALGAS": "MomentumBreakout",
-    "GOLD": "TrendFollowing",
-    "SILVER": "MomentumBreakout",
+    #"GOLD": "TrendFollowing",
+    #"SILVER": "MomentumBreakout",
     "NIFTY": "TrendFollowing",  # Can switch to MeanReversion for ranging markets
     "BANKNIFTY": "TrendFollowing",
 }
