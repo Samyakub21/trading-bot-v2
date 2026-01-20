@@ -458,8 +458,8 @@ class MomentumBreakoutStrategy(Strategy):
 DEFAULT_STRATEGY_MAP = {
     "CRUDEOIL": "TrendFollowing",
     "NATURALGAS": "MomentumBreakout",
-    #"GOLD": "TrendFollowing",
-    #"SILVER": "MomentumBreakout",
+    # "GOLD": "TrendFollowing",
+    # "SILVER": "MomentumBreakout",
     "NIFTY": "TrendFollowing",  # Can switch to MeanReversion for ranging markets
     "BANKNIFTY": "TrendFollowing",
 }

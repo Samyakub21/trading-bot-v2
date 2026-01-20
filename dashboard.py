@@ -2287,8 +2287,8 @@ def render_settings_page():
             "INSTRUMENT_PRIORITY",
             {
                 "CRUDEOIL": 1,
-                #"GOLD": 2,
-                #"SILVER": 3,
+                # "GOLD": 2,
+                # "SILVER": 3,
                 "NATURALGAS": 4,
                 "NIFTY": 5,
                 "BANKNIFTY": 6,

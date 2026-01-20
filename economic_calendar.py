@@ -52,7 +52,7 @@ HIGH_IMPACT_EVENTS = {
         "EIA Natural Gas Storage Change",
         "Baker Hughes Gas Rig Count",
     ],
-    #"GOLD": [
+    # "GOLD": [
     #    "Fed Interest Rate Decision",
     #    "FOMC Statement",
     #    "FOMC Minutes",
@@ -66,15 +66,15 @@ HIGH_IMPACT_EVENTS = {
     #    "Initial Jobless Claims",
     #    "GDP",
     #    "Retail Sales",
-    #],
-    #"SILVER": [
+    # ],
+    # "SILVER": [
     #    "Fed Interest Rate Decision",
     #    "FOMC Statement",
     #    "Non-Farm Payrolls",
     #    "CPI",
     #    "Core CPI",
     #    "Industrial Production",
-    #],
+    # ],
     "NIFTY": [
         "RBI Interest Rate Decision",
         "RBI Monetary Policy",

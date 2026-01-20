@@ -52,7 +52,7 @@ INSTRUMENTS = {
             "breakout_threshold": 0.008,  # Higher threshold for volatile NatGas
         },
     },
-    #"GOLD": {
+    # "GOLD": {
     #    "name": "GOLD",
     #    "exchange_segment_int": 5,  # marketfeed.MCX_COMM (V2)
     #    "exchange_segment_str": "MCX_COMM",  # V2 API: MCX_COMM for commodities
@@ -73,8 +73,8 @@ INSTRUMENTS = {
     #        "volume_multiplier": 1.1,  # Gold has consistent volume
     #        "ema_length": 50,
     #    },
-    #},
-    #"SILVER": {
+    # },
+    # "SILVER": {
     #    "name": "SILVER",
     #    "exchange_segment_int": 5,  # marketfeed.MCX_COMM (V2)
     #    "exchange_segment_str": "MCX_COMM",  # V2 API: MCX_COMM for commodities
@@ -96,7 +96,7 @@ INSTRUMENTS = {
     #        "lookback_period": 20,
     #        "breakout_threshold": 0.006,
     #    },
-    #},
+    # },
     "NIFTY": {
         "name": "NIFTY 50",
         "exchange_segment_int": 2,  # marketfeed.NSE_FNO
