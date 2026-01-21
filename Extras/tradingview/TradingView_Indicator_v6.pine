@@ -11,11 +11,18 @@ indicator("Trading Bot Signals (Indicator)", overlay=true)
 // Signal Thresholds
 rsiBullishThreshold = input.int(60, "RSI Bullish Threshold", minval=50, maxval=70, group="Signal Settings")
 rsiBearishThreshold = input.int(40, "RSI Bearish Threshold", minval=30, maxval=50, group="Signal Settings")
+adxThreshold = input.int(25, "ADX Threshold", minval=15, maxval=35, group="Signal Settings")
 volumeMultiplier = input.float(1.2, "Volume Multiplier", minval=1.0, maxval=3.0, step=0.1, group="Signal Settings")
 
 // Indicator Lengths
 ema50Length = input.int(50, "EMA Length (60min)", minval=20, maxval=200, group="Indicator Settings")
+ema200Length = input.int(200, "EMA 200 Length (15min)", minval=100, maxval=300, group="Indicator Settings")
 rsiLength = input.int(14, "RSI Length", minval=5, maxval=30, group="Indicator Settings")
+adxLength = input.int(14, "ADX Length", minval=5, maxval=30, group="Indicator Settings")
+
+// Time Filter (NSE Only)
+enableTimeFilter = input.bool(false, "Enable Time Filter (11:30-13:30)", group="Time Filter")
+timezoneOffset = input.int(330, "Timezone Offset (minutes from UTC)", minval=-720, maxval=720, group="Time Filter")
 
 // Stop Loss Settings
 slBuffer = input.int(2, "SL Buffer Points", minval=1, maxval=10, group="Stop Loss")
@@ -36,6 +43,13 @@ showBackgroundColor = input.bool(false, "Show Background Colors", group="Display
 // Request 60min data for trend
 ema50_value = request.security(syminfo.tickerid, "60", ta.ema(close, ema50Length), lookahead=barmerge.lookahead_off)
 
+// === 15-MINUTE INDICATORS ===
+// EMA 200 for trend alignment
+ema200_value = ta.ema(close, ema200Length)
+
+// ADX for trend strength (provide adx smoothing parameter)
+[diPlus, diMinus, adx] = ta.dmi(adxLength, adxLength)
+
 // === VWAP ===
 vwap_value = ta.vwap(hlc3)
 
@@ -45,6 +59,10 @@ rsi = ta.rsi(close, rsiLength)
 // === VOLUME ===
 volAvg = ta.sma(volume, 20)
 
+// === TIME FILTER ===
+currentTime = minute(time) + (hour(time) * 60) + (timezoneOffset)
+isNoTradeZone = enableTimeFilter and (currentTime >= 690 and currentTime <= 810) // 11:30-13:30 IST
+
 // ============================================================================
 // SIGNAL LOGIC
 // ============================================================================
@@ -52,19 +70,41 @@ volAvg = ta.sma(volume, 20)
 // Volume Confirmation
 volumeConfirmed = volume >= (volAvg * volumeMultiplier)
 
+// Trend Strength (ADX)
+trendStrength = adx > adxThreshold
+
+// Time Filter (only apply if enabled)
+timeAllowed = not isNoTradeZone
+
 // BULLISH SIGNAL (CALL)
+// 1. Trend Confirmation (60min): Price > EMA50
+// 2. Trend Alignment (15min): Price > EMA200
+// 3. Trigger (15min): Price > VWAP
+// 4. Momentum (15min): RSI > 60
+// 5. Trend Strength (15min): ADX > 25
+// 6. Volume Confirmation
+// 7. Time Filter (if enabled)
 bullishTrend = close > ema50_value
+bullishAlignment = close > ema200_value
 bullishTrigger = close > vwap_value
 bullishMomentum = rsi > rsiBullishThreshold
 
-bullishSignal = bullishTrend and bullishTrigger and bullishMomentum and volumeConfirmed
+bullishSignal = bullishTrend and bullishAlignment and bullishTrigger and bullishMomentum and trendStrength and volumeConfirmed and timeAllowed
 
 // BEARISH SIGNAL (PUT)
+// 1. Trend Confirmation (60min): Price < EMA50
+// 2. Trend Alignment (15min): Price < EMA200
+// 3. Trigger (15min): Price < VWAP
+// 4. Momentum (15min): RSI < 40
+// 5. Trend Strength (15min): ADX > 25
+// 6. Volume Confirmation
+// 7. Time Filter (if enabled)
 bearishTrend = close < ema50_value
+bearishAlignment = close < ema200_value
 bearishTrigger = close < vwap_value
 bearishMomentum = rsi < rsiBearishThreshold
 
-bearishSignal = bearishTrend and bearishTrigger and bearishMomentum and volumeConfirmed
+bearishSignal = bearishTrend and bearishAlignment and bearishTrigger and bearishMomentum and trendStrength and volumeConfirmed and timeAllowed
 
 // ============================================================================
 // DYNAMIC STOP LOSS CALCULATION
@@ -94,6 +134,7 @@ if bearishSignal
 
 // Plot EMA (Trend Line)
 plot(showEMA ? ema50_value : na, "EMA 50 (60min)", color=color.new(color.orange, 0), linewidth=2)
+plot(showEMA ? ema200_value : na, "EMA 200 (15min)", color=color.new(color.purple, 0), linewidth=1, style=plot.style_stepline)
 
 // Plot VWAP
 plot(showVWAP ? vwap_value : na, "VWAP", color=color.new(color.blue, 20), linewidth=2, style=plot.style_line)
@@ -113,15 +154,15 @@ plot(showSLLevels and bearishSignal ? sl_Short : na, "Short SL", color=color.new
      linewidth=2, style=plot.style_cross, offset=1)
 
 // Background Colors for Signal Zones
-bgcolor(showBackgroundColor and bullishTrend and bullishTrigger and bullishMomentum ? color.new(color.green, 95) : na, title="Bullish Zone")
-bgcolor(showBackgroundColor and bearishTrend and bearishTrigger and bearishMomentum ? color.new(color.red, 95) : na, title="Bearish Zone")
+bgcolor(showBackgroundColor and bullishTrend and bullishAlignment and bullishTrigger and bullishMomentum and trendStrength ? color.new(color.green, 95) : na, title="Bullish Zone")
+bgcolor(showBackgroundColor and bearishTrend and bearishAlignment and bearishTrigger and bearishMomentum and trendStrength ? color.new(color.red, 95) : na, title="Bearish Zone")
 
 // ============================================================================
 // INFORMATION PANEL
 // ============================================================================
 
 if showInfoPanel
-    var table infoTable = table.new(position.top_right, 2, 7, 
+    var table infoTable = table.new(position.top_right, 2, 9, 
                                      bgcolor=color.new(#000000, 85), 
                                      border_width=2, 
                                      border_color=color.new(#555555, 50))
@@ -132,55 +173,70 @@ if showInfoPanel
                   bgcolor=color.new(#1E88E5, 70), text_size=size.normal)
         table.cell(infoTable, 1, 0, "", bgcolor=color.new(#1E88E5, 70))
         
+        // ADX Value
+        adxColor = adx > adxThreshold ? color.new(color.lime, 0) : color.new(color.gray, 0)
+        table.cell(infoTable, 0, 1, "ADX (" + str.tostring(adxLength) + ")", 
+                  text_color=color.new(color.white, 0), text_size=size.small)
+        table.cell(infoTable, 1, 1, str.tostring(adx, "#.#"), 
+                  text_color=adxColor, text_size=size.normal)
+        
         // RSI Value
         rsiColor = rsi > rsiBullishThreshold ? color.new(color.lime, 0) : 
                    rsi < rsiBearishThreshold ? color.new(color.red, 0) : color.new(color.gray, 0)
-        table.cell(infoTable, 0, 1, "RSI (" + str.tostring(rsiLength) + ")", 
+        table.cell(infoTable, 0, 2, "RSI (" + str.tostring(rsiLength) + ")", 
                   text_color=color.new(color.white, 0), text_size=size.small)
-        table.cell(infoTable, 1, 1, str.tostring(rsi, "#.#"), 
+        table.cell(infoTable, 1, 2, str.tostring(rsi, "#.#"), 
                   text_color=rsiColor, text_size=size.normal)
         
         // Volume Ratio
         volRatio = volAvg > 0 ? volume / volAvg : 1.0
         volColor = volRatio >= volumeMultiplier ? color.new(color.lime, 0) : color.new(color.gray, 0)
-        table.cell(infoTable, 0, 2, "Vol/Avg", 
+        table.cell(infoTable, 0, 3, "Vol/Avg", 
                   text_color=color.new(color.white, 0), text_size=size.small)
-        table.cell(infoTable, 1, 2, str.tostring(volRatio, "#.##") + "x", 
+        table.cell(infoTable, 1, 3, str.tostring(volRatio, "#.##") + "x", 
                   text_color=volColor, text_size=size.normal)
         
-        // Trend (EMA)
+        // Trend (EMA 50)
         trendStatus = close > ema50_value ? "BULL ↑" : close < ema50_value ? "BEAR ↓" : "NEUTRAL →"
         trendColor = close > ema50_value ? color.new(color.lime, 0) : 
                      close < ema50_value ? color.new(color.red, 0) : color.new(color.gray, 0)
-        table.cell(infoTable, 0, 3, "Trend (60m)", 
+        table.cell(infoTable, 0, 4, "Trend (60m)", 
                   text_color=color.new(color.white, 0), text_size=size.small)
-        table.cell(infoTable, 1, 3, trendStatus, 
+        table.cell(infoTable, 1, 4, trendStatus, 
                   text_color=trendColor, text_size=size.normal)
+        
+        // EMA 200 Alignment
+        ema200Status = close > ema200_value ? "ABOVE ↑" : "BELOW ↓"
+        ema200Color = close > ema200_value ? color.new(color.lime, 0) : color.new(color.red, 0)
+        table.cell(infoTable, 0, 5, "EMA200 Align", 
+                  text_color=color.new(color.white, 0), text_size=size.small)
+        table.cell(infoTable, 1, 5, ema200Status, 
+                  text_color=ema200Color, text_size=size.normal)
         
         // VWAP Position
         vwapStatus = close > vwap_value ? "ABOVE ↑" : "BELOW ↓"
         vwapColor = close > vwap_value ? color.new(color.lime, 0) : color.new(color.red, 0)
-        table.cell(infoTable, 0, 4, "VWAP", 
+        table.cell(infoTable, 0, 6, "VWAP", 
                   text_color=color.new(color.white, 0), text_size=size.small)
-        table.cell(infoTable, 1, 4, vwapStatus, 
+        table.cell(infoTable, 1, 6, vwapStatus, 
                   text_color=vwapColor, text_size=size.normal)
         
-        // Volume Confirmation
-        volConfText = volumeConfirmed ? "✓ YES" : "✗ NO"
-        volConfColor = volumeConfirmed ? color.new(color.lime, 0) : color.new(color.orange, 0)
-        table.cell(infoTable, 0, 5, "Vol Confirm", 
+        // Market Zone
+        zoneStatus = isNoTradeZone ? "NO-TRADE" : "ACTIVE"
+        zoneColor = isNoTradeZone ? color.new(color.red, 0) : color.new(color.lime, 0)
+        table.cell(infoTable, 0, 7, "Market Zone", 
                   text_color=color.new(color.white, 0), text_size=size.small)
-        table.cell(infoTable, 1, 5, volConfText, 
-                  text_color=volConfColor, text_size=size.normal)
+        table.cell(infoTable, 1, 7, zoneStatus, 
+                  text_color=zoneColor, text_size=size.normal)
         
         // Signal Status
         signalText = bullishSignal ? "🚀 CALL" : bearishSignal ? "🔻 PUT" : "⏸ NONE"
         signalColor = bullishSignal ? color.new(color.lime, 0) : 
                       bearishSignal ? color.new(color.red, 0) : color.new(color.gray, 0)
-        table.cell(infoTable, 0, 6, "Signal", 
+        table.cell(infoTable, 0, 8, "Signal", 
                   text_color=color.new(color.white, 0), text_size=size.small, 
                   bgcolor=signalColor)
-        table.cell(infoTable, 1, 6, signalText, 
+        table.cell(infoTable, 1, 8, signalText, 
                   text_color=color.white, text_size=size.normal, 
                   bgcolor=signalColor)
 
@@ -197,12 +253,12 @@ hline(rsiBearishThreshold, "Bearish Threshold", color=color.new(color.red, 50), 
 // ALERTS
 // ============================================================================
 
-alertcondition(bullishSignal, "Bullish CALL Signal", "🚀 CALL Entry Signal!\nRSI: {{rsi}}\nPrice: {{close}}")
-alertcondition(bearishSignal, "Bearish PUT Signal", "🔻 PUT Entry Signal!\nRSI: {{rsi}}\nPrice: {{close}}")
+alertcondition(bullishSignal, "Bullish CALL Signal", "🚀 CALL Entry Signal!\nADX: {{adx}}\nRSI: {{rsi}}\nPrice: {{close}}")
+alertcondition(bearishSignal, "Bearish PUT Signal", "🔻 PUT Entry Signal!\nADX: {{adx}}\nRSI: {{rsi}}\nPrice: {{close}}")
 
 // Combined alert for any signal
 alertcondition(bullishSignal or bearishSignal, "Any Signal", 
-              "⚡ Trading Signal Generated!\nType: {{bullishSignal ? 'CALL' : 'PUT'}}\nPrice: {{close}}\nRSI: {{rsi}}")
+              "⚡ Trading Signal Generated!\nType: {{bullishSignal ? 'CALL' : 'PUT'}}\nADX: {{adx}}\nRSI: {{rsi}}\nPrice: {{close}}")
 
 // ============================================================================
 // NOTES & INSTRUCTIONS
@@ -218,16 +274,22 @@ alertcondition(bullishSignal or bearishSignal, "Any Signal",
 // ==================
 // 
 // BULLISH (CALL) Signal:
-// ✓ Price > EMA50 (60min) - Uptrend confirmation
+// ✓ Price > EMA50 (60min) - Trend confirmation
+// ✓ Price > EMA200 (15min) - Trend alignment
 // ✓ Price > VWAP - Above value area
 // ✓ RSI > 60 - Strong momentum
+// ✓ ADX > 25 - Trend strength confirmation
 // ✓ Volume > 1.2x Average - Volume confirmation
+// ✓ Time Filter (if enabled): Outside 11:30-13:30 IST
 // 
 // BEARISH (PUT) Signal:
-// ✓ Price < EMA50 (60min) - Downtrend confirmation
+// ✓ Price < EMA50 (60min) - Trend confirmation
+// ✓ Price < EMA200 (15min) - Trend alignment
 // ✓ Price < VWAP - Below value area
 // ✓ RSI < 40 - Weak momentum
+// ✓ ADX > 25 - Trend strength confirmation
 // ✓ Volume > 1.2x Average - Volume confirmation
+// ✓ Time Filter (if enabled): Outside 11:30-13:30 IST
 // 
 // STOP LOSS:
 // ==========
