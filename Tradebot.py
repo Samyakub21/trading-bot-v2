@@ -78,15 +78,22 @@ def setup_logging():
     # Create formatter
     formatter = logging.Formatter(LOG_FORMAT, datefmt=LOG_DATE_FORMAT)
 
-    # Console handler (INFO level)
-    console_handler = logging.StreamHandler()
+    # Console handler (INFO level) - ensure UTF-8 wrapped stream for Windows
+    try:
+        console_stream = _wrap_stream_utf8(sys.stdout)
+    except Exception:
+        console_stream = sys.stdout
+    console_handler = logging.StreamHandler(stream=console_stream)
     console_handler.setLevel(logging.INFO)
     console_handler.setFormatter(formatter)
     root_logger.addHandler(console_handler)
 
     # File handler (DEBUG level with rotation)
     file_handler = RotatingFileHandler(
-        LOG_FILE_PATH, maxBytes=LOG_FILE_MAX_BYTES, backupCount=LOG_FILE_BACKUP_COUNT
+        LOG_FILE_PATH,
+        maxBytes=LOG_FILE_MAX_BYTES,
+        backupCount=LOG_FILE_BACKUP_COUNT,
+        encoding="utf-8",
     )
     file_handler.setLevel(logging.DEBUG)
     file_handler.setFormatter(formatter)
@@ -133,32 +140,33 @@ except ImportError:
 # =============================================================================
 # LOGGING CONFIGURATION
 # =============================================================================
+import sys
+import io
+
+
+def _wrap_stream_utf8(stream):
+    """Return a text stream wrapper using UTF-8 encoding (safe for Windows consoles)."""
+    try:
+        # If stream has a buffer (typical for stdout/stderr), wrap its buffer
+        buf = getattr(stream, "buffer", None)
+        if buf is not None:
+            return io.TextIOWrapper(buf, encoding="utf-8", errors="replace", line_buffering=True)
+    except Exception:
+        pass
+    # Fallback to original stream
+    return stream
+
+
+# Build handlers explicitly so we can ensure UTF-8 console output on Windows
+console_stream = _wrap_stream_utf8(sys.stdout)
+console_handler = logging.StreamHandler(stream=console_stream)
+file_handler = logging.FileHandler("bot.log", encoding="utf-8")
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
-    handlers=[
-        logging.FileHandler("bot.log", encoding="utf-8"),
-        logging.StreamHandler(),
-    ],
+    handlers=[file_handler, console_handler],
 )
-
-# Configure StreamHandler to use UTF-8 encoding for Windows console
-for handler in logging.root.handlers:
-    if isinstance(handler, logging.StreamHandler) and hasattr(handler.stream, "fileno"):
-        stream_name = getattr(handler.stream, "name", None)
-        if stream_name in ["<stdout>", "<stderr>"]:
-            try:
-                handler.setStream(
-                    open(
-                        handler.stream.fileno(),
-                        mode="w",
-                        encoding="utf-8",
-                        buffering=1,
-                        closefd=False,
-                    )
-                )
-            except (OSError, AttributeError):
-                pass
 
 
 # =============================================================================

@@ -53,7 +53,7 @@ from utils import (
     COOLDOWN_AFTER_LOSS,
     SIGNAL_COOLDOWN,
 )
-from contract_updater import load_scrip_master
+from contract_updater import load_scrip_master, find_current_month_future
 import socket_handler
 from state_stores import get_signal_tracker
 
@@ -612,7 +612,9 @@ def get_instrument_data(
             from_date = (datetime.now() - timedelta(days=25)).strftime("%Y-%m-%d")
 
         # V2 API call for intraday minute data
-        data = dhan.intraday_minute_data(
+        # Use robust wrapper from utils to get retries, backoff and consistent errors
+        data = dhan_intraday_minute_data(
+            dhan,
             security_id=future_id,
             exchange_segment=exchange_segment_str,
             instrument_type=instrument_type,
@@ -622,10 +624,50 @@ def get_instrument_data(
 
         if data.get("status") == "failure":
             error_msg = data.get("remarks", data.get("errorMessage", "Unknown error"))
-            logger.error(
-                f"Data Error for {log_context} (future_id: {future_id}): API failure - {error_msg}"
+            logger.warning(
+                f"Data fetch failure for {log_context} (future_id: {future_id}): {error_msg} - attempting rollover/retry"
             )
-            return None, None
+
+            # Attempt automatic rollover if using an instrument key and contract expired
+            if instrument_key is not None:
+                try:
+                    contracts = load_scrip_master()
+                    new_contract = find_current_month_future(
+                        instrument_key, exchange_segment_str, contracts
+                    )
+                    if new_contract:
+                        new_id = new_contract.get("SEM_SMST_SECURITY_ID")
+                        new_expiry = new_contract.get("SEM_EXPIRY_DATE")
+                        logger.info(
+                            f"Auto-rollover: Updating {instrument_key} to future_id={new_id}, expiry={new_expiry}"
+                        )
+                        # Update in-memory instrument config so subsequent calls use it
+                        INSTRUMENTS[instrument_key]["future_id"] = new_id
+                        INSTRUMENTS[instrument_key]["expiry_date"] = new_expiry
+
+                        # Retry data fetch once with new contract
+                        data = dhan_intraday_minute_data(
+                            dhan,
+                            security_id=new_id,
+                            exchange_segment=exchange_segment_str,
+                            instrument_type=instrument_type,
+                            from_date=from_date,
+                            to_date=to_date,
+                        )
+
+                        if data.get("status") == "failure":
+                            logger.error(
+                                f"Data Error after rollover for {instrument_key} (future_id: {new_id}): {data.get('remarks', '')}"
+                            )
+                            return None, None
+                    else:
+                        logger.warning(f"No rollover contract found for {instrument_key}")
+                        return None, None
+                except Exception as e:
+                    logger.error(f"Rollover attempt failed for {instrument_key}: {e}")
+                    return None, None
+            else:
+                return None, None
 
         # V2 API returns data in arrays format: open, high, low, close, volume, timestamp
         raw_data = data.get("data", data)

@@ -370,6 +370,15 @@
       "previous": ""
     },
     {
+      "name": "President Trump Speaks",
+      "timestamp": "2026-01-20T13:00:00",
+      "impact": "medium",
+      "country": "USD",
+      "actual": null,
+      "forecast": "",
+      "previous": ""
+    },
+    {
       "name": "MI Leading Index m/m",
       "timestamp": "2026-01-20T18:30:00",
       "impact": "low",
@@ -501,7 +510,7 @@
       "impact": "medium",
       "country": "USD",
       "actual": null,
-      "forecast": "-0.5%",
+      "forecast": "-0.3%",
       "previous": "3.3%"
     },
     {
@@ -744,7 +753,7 @@
       "impact": "low",
       "country": "USD",
       "actual": null,
-      "forecast": "",
+      "forecast": "-82B",
       "previous": "-71B"
     },
     {
@@ -753,7 +762,7 @@
       "impact": "low",
       "country": "USD",
       "actual": null,
-      "forecast": "",
+      "forecast": "-2.5M",
       "previous": "3.4M"
     },
     {
@@ -762,7 +771,7 @@
       "impact": "high",
       "country": "NZD",
       "actual": null,
-      "forecast": "0.4%",
+      "forecast": "0.5%",
       "previous": "1.0%"
     },
     {
@@ -1009,5 +1018,5 @@
       "previous": "4.2%"
     }
   ],
-  "last_update": "2026-01-20T23:19:53.697511"
+  "last_update": "2026-01-21T11:28:19.342164"
 }

@@ -156,6 +156,15 @@ class TrendFollowingStrategy(Strategy):
                 atr_mult = 2.0  # Higher multiplier for Crude Oil noise
             atr_len = self.get_param("atr_length", 14)
 
+            # Ensure we have enough historical bars to compute indicators
+            required_15 = max(rsi_len, 200, atr_len, 14, vol_window)
+            # Need at least a few extra bars to access -2 index safely
+            if df_15.shape[0] < (required_15 + 3) or df_60.shape[0] < 2:
+                self.logger.info(
+                    f"SKIP [{self.instrument}]: Insufficient data for indicators (have {df_15.shape[0]}x15m, {df_60.shape[0]}x60m, need {required_15 + 3}x15m and 2x60m)"
+                )
+                return None
+
             # Calculate indicators
             # 1. EMA on 60min
             df_60["EMA"] = EMAIndicator(
@@ -521,6 +530,14 @@ class MomentumBreakoutStrategy(Strategy):
             adx_threshold = self.get_param("adx_threshold", 25)
             atr_mult = self.get_param("atr_multiplier", 1.5)
             atr_len = self.get_param("atr_length", 14)
+
+            # Ensure sufficient data for indicators and lookback
+            required_15 = max(rsi_len, atr_len, 14, lookback, 3)
+            if df_15.shape[0] < (required_15 + 3):
+                self.logger.info(
+                    f"SKIP [{self.instrument}]: Insufficient 15m data (have {df_15.shape[0]}, need {required_15 + 3})"
+                )
+                return None
 
             # Instrument-specific overrides
             if self.instrument == "NATGASMINI":

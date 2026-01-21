@@ -39,7 +39,7 @@ DEFAULT_TRADING_CONFIG = {
     # Order Execution
     "LIMIT_ORDER_BUFFER": 0.01,  # 1% buffer for limit orders
     # Logging Configuration
-    "DEBUG_MODE": False,  # Enable debug logging when True
+    "DEBUG_MODE": True,  # Enable debug logging when True
     "PAPER_TRADING": True,  # Simulate trades without placing orders
     # Database Configuration
     "USE_DATABASE": True,  # Use SQLite database instead of JSON files
