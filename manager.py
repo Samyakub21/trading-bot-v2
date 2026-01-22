@@ -292,7 +292,7 @@ def close_trade(
 
 def run_manager(active_trade: Dict[str, Any], active_instrument: str) -> None:
     """Main manager loop for trade management"""
-    logging.info(">>> Manager Started (Step Ladder Active)")
+    logging.info(">>> Manager Started (ATR-Based Trailing Active)")
 
     while not socket_handler.is_shutdown():
         # Get current LTP values with REST API fallback for stale data
@@ -503,9 +503,13 @@ def run_manager(active_trade: Dict[str, Any], active_instrument: str) -> None:
             option_entry = active_trade.get("option_entry", 0)
             option_pnl = (opt_ltp - option_entry) * trade_lot_size
 
-            # Jackpot Exit (1:5)
-            if current_r >= 5.0:
-                logging.info(f">>> 🎯 1:5 TARGET HIT! Option P&L: ₹{option_pnl:.2f}")
+            # Jackpot Exit (using max_profit_mult from exit_logic)
+            exit_logic = active_trade.get("exit_logic", {})
+            max_profit_mult = exit_logic.get("max_profit_mult")
+            jackpot_threshold = max_profit_mult if max_profit_mult else 5.0
+            if current_r >= jackpot_threshold:
+                jackpot_msg = f"🎯 {jackpot_threshold}R TARGET HIT!"
+                logging.info(f">>> {jackpot_msg} Option P&L: ₹{option_pnl:.2f}")
 
                 target_exit_price = round(opt_ltp * (1 - LIMIT_ORDER_BUFFER), 2)
 
@@ -543,52 +547,106 @@ def run_manager(active_trade: Dict[str, Any], active_instrument: str) -> None:
                     else opt_ltp
                 )
 
-                close_trade("1:5 TARGET HIT", ltp, exit_price, active_trade)
+                close_trade(
+                    f"{jackpot_threshold}R TARGET HIT", ltp, exit_price, active_trade
+                )
                 continue
 
-            # Trailing Steps
-            lock_r = 0
-            msg = ""
-            trade_lock = scanner.get_trade_lock()
+            # ATR-Based Trailing Stop Loss
+            if exit_logic:
+                trade_lock = scanner.get_trade_lock()
+                activation_atr_mult = exit_logic.get("activation_atr_mult", 1.5)
+                trail_atr_mult = exit_logic.get("trail_atr_mult", 1.5)
+                atr_value = exit_logic.get("atr_value", 0)
 
-            if current_r >= 4.0 and active_trade["step_level"] < 4:
-                lock_r = 3.0
-                active_trade["step_level"] = 4
-                msg = "🚀 **Step 3 (1:4)**"
-            elif current_r >= 3.0 and active_trade["step_level"] < 3:
-                lock_r = 2.0
-                active_trade["step_level"] = 3
-                msg = "🚀 **Step 2 (1:3)**"
-            elif current_r >= 2.0 and active_trade["step_level"] < 2:
-                lock_r = 1.0
-                active_trade["step_level"] = 2
-                msg = "✅ **Step 1 (1:2)**"
+                if atr_value > 0:
+                    trail_distance = trail_atr_mult * atr_value
+                    activation_threshold = activation_atr_mult * atr_value
 
-            if lock_r > 0:
-                if trade_type == "BUY":
-                    new_sl = active_trade["entry"] + (lock_r * risk_unit)
-                else:
-                    new_sl = active_trade["entry"] - (lock_r * risk_unit)
+                    if not active_trade.get("trailing_activated", False):
+                        # Check if profit >= activation threshold
+                        if current_profit_future >= activation_threshold:
+                            active_trade["trailing_activated"] = True
+                            # Set initial trailing SL to current_price - trail_distance
+                            if trade_type == "BUY":
+                                new_sl = ltp - trail_distance
+                            else:
+                                new_sl = ltp + trail_distance
 
-                with trade_lock:
-                    active_trade["sl"] = new_sl
-                    save_state(active_trade)
+                            with trade_lock:
+                                active_trade["sl"] = new_sl
+                                save_state(active_trade)
 
-                # Construct Option Name for Alert
-                inst_name = INSTRUMENTS.get(active_trade.get("instrument", ""), {}).get(
-                    "name", active_trade.get("instrument", "")
-                )
-                atm_strike = active_trade.get("atm_strike", 0)
-                opt_type = "CE" if active_trade["type"] == "BUY" else "PE"
-                option_name = (
-                    f"{inst_name} {int(atm_strike)} {opt_type}"
-                    if atm_strike
-                    else f"{inst_name} {opt_type}"
-                )
+                            # Send alert
+                            send_alert(
+                                f"🚀 **TRAILING ACTIVATED**\n**{option_name}**\n"
+                                f"Activation Threshold: {activation_threshold:.2f} pts\n"
+                                f"Trail Distance: {trail_distance:.2f} pts\n"
+                                f"New SL: {new_sl:.2f}\n"
+                                f"Option P&L: ₹{option_pnl:.2f}"
+                            )
+                    else:
+                        # Trailing active: Update SL based on current price
+                        if trade_type == "BUY":
+                            new_sl = max(active_trade["sl"], ltp - trail_distance)
+                        else:
+                            new_sl = min(active_trade["sl"], ltp + trail_distance)
 
-                send_alert(
-                    f"{msg}\n**{option_name}**\n🔒 Locking {lock_r}R\nNew SL: {new_sl}\nOption P&L: ₹{option_pnl:.2f}"
-                )
+                        if new_sl != active_trade["sl"]:
+                            with trade_lock:
+                                active_trade["sl"] = new_sl
+                                save_state(active_trade)
+
+                            # Send alert
+                            send_alert(
+                                f"🔄 **TRAILING UPDATED**\n**{option_name}**\n"
+                                f"Trail Distance: {trail_distance:.2f} pts\n"
+                                f"New SL: {new_sl:.2f}\n"
+                                f"Option P&L: ₹{option_pnl:.2f}"
+                            )
+            else:
+                # Fallback to old step ladder logic if no exit_logic
+                lock_r = 0
+                msg = ""
+                if current_r >= 4.0 and active_trade["step_level"] < 4:
+                    lock_r = 3.0
+                    active_trade["step_level"] = 4
+                    msg = "🚀 **Step 3 (1:4)**"
+                elif current_r >= 3.0 and active_trade["step_level"] < 3:
+                    lock_r = 2.0
+                    active_trade["step_level"] = 3
+                    msg = "🚀 **Step 2 (1:3)**"
+                elif current_r >= 2.0 and active_trade["step_level"] < 2:
+                    lock_r = 1.0
+                    active_trade["step_level"] = 2
+                    msg = "✅ **Step 1 (1:2)**"
+
+                if lock_r > 0:
+                    trade_lock = scanner.get_trade_lock()
+                    if trade_type == "BUY":
+                        new_sl = active_trade["entry"] + (lock_r * risk_unit)
+                    else:
+                        new_sl = active_trade["entry"] - (lock_r * risk_unit)
+
+                    with trade_lock:
+                        active_trade["sl"] = new_sl
+                        save_state(active_trade)
+
+                    # Construct Option Name for Alert
+                    inst_name = INSTRUMENTS.get(
+                        active_trade.get("instrument", ""), {}
+                    ).get("name", active_trade.get("instrument", ""))
+                    atm_strike = active_trade.get("atm_strike", 0)
+                    opt_type = "CE" if active_trade["type"] == "BUY" else "PE"
+                    option_name = (
+                        f"{inst_name} {int(atm_strike)} {opt_type}"
+                        if atm_strike
+                        else f"{inst_name} {opt_type}"
+                    )
+
+                    send_alert(
+                        f"{msg}\n**{option_name}**\n🔒 Locking {lock_r}R\nNew SL: {new_sl}\nOption P&L: ₹{option_pnl:.2f}"
+                    )
 
         time.sleep(0.5)
 

@@ -67,7 +67,36 @@ from state_stores import get_signal_tracker
 # Create named logger for scanner
 logger = logging.getLogger("Scanner")
 
-_DATA_CACHE: Dict[str, pd.DataFrame] = {}
+_DATA_CACHE: Dict[str, Dict[str, Any]] = {}
+_LAST_INSTRUMENT_STATES: Dict[str, Dict[str, bool]] = {}
+
+
+def update_live_candle(instrument_key: str, ltp: float):
+    """Updates the internal cache with the live price from WebSocket"""
+    if instrument_key in _DATA_CACHE:
+        cache_data = _DATA_CACHE[instrument_key]
+        df = cache_data["df"]
+        now = datetime.now().replace(second=0, microsecond=0)
+
+        # If the current minute already exists, update its 'close' and 'high/low'
+        if now in df.index:
+            df.at[now, "close"] = ltp
+            df.at[now, "high"] = max(df.at[now, "high"], ltp)
+            df.at[now, "low"] = min(df.at[now, "low"], ltp)
+        else:
+            # Create a new minute candle based on the last known price
+            new_row = pd.DataFrame(
+                {"open": ltp, "high": ltp, "low": ltp, "close": ltp, "volume": 0},
+                index=[now],
+            )
+            df = pd.concat([df, new_row])
+            # Keep rolling history
+            df = df[df.index >= (datetime.now() - timedelta(days=30))]
+            cache_data["df"] = df
+
+        # Update last timestamp
+        cache_data["last_timestamp"] = now
+
 
 # =============================================================================
 # STRATEGY PATTERN SUPPORT
@@ -613,13 +642,19 @@ def get_instrument_data(
         # Format: security_id, exchange_segment, instrument_type, from_date, to_date
         to_date = datetime.now().strftime("%Y-%m-%d")
 
-        # Smart Fetching Logic
+        # Smart Incremental Fetching Logic
         if cache_key in _DATA_CACHE:
-            # If cached, fetch only today's data to append
-            from_date = to_date
+            cached_data = _DATA_CACHE[cache_key]
+            cached_df = cached_data["df"]
+            last_ts = cached_data["last_timestamp"]
+            # Fetch from last timestamp onwards (add buffer to avoid gaps)
+            from_date = (last_ts - timedelta(days=1)).strftime("%Y-%m-%d")
+            to_date = datetime.now().strftime("%Y-%m-%d")
         else:
-            # If not cached, fetch full history (25 days)
-            from_date = (datetime.now() - timedelta(days=25)).strftime("%Y-%m-%d")
+            # If not cached, fetch full history (30 days)
+            from_date = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
+            to_date = datetime.now().strftime("%Y-%m-%d")
+            cached_df = None
 
         # V2 API call for intraday minute data
         # Use robust wrapper from utils to get retries, backoff and consistent errors
@@ -747,19 +782,40 @@ def get_instrument_data(
 
         df.set_index("time", inplace=True)
 
-        # Data Merging
-        if cache_key in _DATA_CACHE:
-            cached_df = _DATA_CACHE[cache_key]
+        # Stale data detection with relaxed check for commodities
+        latest_timestamp = df.index.max()
+        time_diff = datetime.now() - latest_timestamp.to_pydatetime()
+        max_allowed_lag = (
+            1800 if exchange_segment_str == "MCX_COMM" else 300
+        )  # 30 mins for MCX, 5 mins for others
+        if time_diff.total_seconds() > max_allowed_lag:
+            logger.warning(
+                f"⚠️ Data truly stale for {log_context}: latest tick is {time_diff.total_seconds()/60:.1f} minutes old. Skipping analysis."
+            )
+            return None, None
+
+        # Data Merging and Caching
+        new_candles = 0
+        if cached_df is not None:
+            old_len = len(cached_df)
             # Append new data to cached data
             df = pd.concat([cached_df, df])
             # Drop duplicates (timestamps) to ensure clean data
             df = df[~df.index.duplicated(keep="last")]
+            new_candles = len(df) - old_len
+        else:
+            new_candles = len(df)
 
-            # Fix Memory Leak: Keep only last 30 days of data
-            df = df[df.index >= (datetime.now() - timedelta(days=30))]
+        # Keep rolling history of ~30 trading days
+        df = df[df.index >= (datetime.now() - timedelta(days=30))]
 
-        # Update Cache
-        _DATA_CACHE[cache_key] = df
+        # Update Cache with DataFrame and last timestamp
+        _DATA_CACHE[cache_key] = {"df": df, "last_timestamp": df.index.max()}
+
+        # Debug log for data freshness
+        logger.debug(
+            f"[{log_context}] Appended {new_candles} new minute candles, latest: {df.index.max()}"
+        )
 
         df_15 = (
             df.resample("15min")
@@ -968,26 +1024,46 @@ def analyze_instrument_signal(
 def scan_all_instruments() -> List[Dict[str, Any]]:
     """Scan all configured instruments and return those in trade zone"""
     instruments_to_scan = get_instruments_to_scan()
+
+    # Filter to only scan instruments that are currently in market hours
+    instruments_to_scan = [
+        inst for inst in instruments_to_scan if is_instrument_market_open(inst)[0]
+    ]
+
     signals_found: List[Dict[str, Any]] = []
     scannable_count = 0
 
     logger.info(
-        f"🔍 Scanning {len(instruments_to_scan)} instruments: {', '.join(instruments_to_scan)}"
+        f"🔍 Scanning instruments in market hours: {', '.join(instruments_to_scan)}"
     )
 
-    scannable_count = 0
     for inst_key in instruments_to_scan:
-        # Check if market is open for this instrument
-        market_open, market_msg = is_instrument_market_open(inst_key)
-        if not market_open:
-            logger.info(f"SKIP [{inst_key}]: Market closed - {market_msg}")
-            continue
+        # Initialize per-instrument state tracking
+        if inst_key not in _LAST_INSTRUMENT_STATES:
+            _LAST_INSTRUMENT_STATES[inst_key] = {
+                "market_open": None,
+                "can_trade": None,
+            }
+
+        # Since we filtered, market is open
+        _LAST_INSTRUMENT_STATES[inst_key]["market_open"] = True
 
         # Check if new trades are allowed
         can_trade, trade_msg = can_instrument_trade_new(inst_key)
+        prev_can_trade = _LAST_INSTRUMENT_STATES[inst_key].get("can_trade")
         if not can_trade:
-            logger.info(f"SKIP [{inst_key}]: Trading restricted - {trade_msg}")
+            if prev_can_trade is not False:
+                logger.info(f"SKIP [{inst_key}]: Trading restricted - {trade_msg}")
+            else:
+                logger.debug(
+                    f"SKIP [{inst_key}]: Trading restricted - {trade_msg} (repeated)"
+                )
+            _LAST_INSTRUMENT_STATES[inst_key]["can_trade"] = False
             continue
+        else:
+            if prev_can_trade is False:
+                logger.info(f"RESUME [{inst_key}]: Trading allowed")
+            _LAST_INSTRUMENT_STATES[inst_key]["can_trade"] = True
 
         scannable_count += 1
 
@@ -997,6 +1073,13 @@ def scan_all_instruments() -> List[Dict[str, Any]]:
         if df_15 is None or df_60 is None:
             logger.info(f"SKIP [{inst_key}]: No data available")
             continue
+
+        # Data freshness check: warn if latest candle is older than 20 minutes, but continue for swing trading
+        if df_15.index.max() < datetime.now() - timedelta(minutes=20):
+            logger.warning(
+                f"[{inst_key}]: Data stale (latest: {df_15.index.max()}), proceeding with available data"
+            )
+            # Continue anyway for swing trading
 
         # Analyze for signals
         kwargs = {}
@@ -1586,6 +1669,10 @@ def execute_trade_entry(
         active_trade["lot_size"] = inst["lot_size"]
         active_trade["exchange_segment_str"] = inst["exchange_segment_str"]
         active_trade["atm_strike"] = atm_strike
+        active_trade["trailing_activated"] = False
+        active_trade["exit_logic"] = (
+            signal_info.get("exit_logic", {}) if signal_info else {}
+        )
         save_state(active_trade)
 
     risk = abs(price - dynamic_sl)

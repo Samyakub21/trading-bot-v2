@@ -13,6 +13,7 @@ from typing import Any, Dict, List, Optional, Tuple, cast
 from dhanhq import marketfeed
 
 from instruments import INSTRUMENTS, MULTI_SCAN_ENABLED, get_instruments_to_scan
+import scanner  # For live candle updates
 from config import config
 
 # =============================================================================
@@ -84,6 +85,8 @@ def on_ticks(
         elif security_id == str(INSTRUMENTS[active_instrument]["future_id"]):
             LATEST_LTP = ltp
             LAST_TICK_TIME = datetime.now()
+            # Update live candle data
+            scanner.update_live_candle(active_instrument, ltp)
         else:
             for inst_key, inst in INSTRUMENTS.items():
                 if security_id == str(inst["future_id"]):
@@ -91,6 +94,8 @@ def on_ticks(
                         "ltp": ltp,
                         "last_update": datetime.now(),
                     }
+                    # Update live candle data
+                    scanner.update_live_candle(inst_key, ltp)
                     if inst_key == active_instrument:
                         LATEST_LTP = ltp
                         LAST_TICK_TIME = datetime.now()
