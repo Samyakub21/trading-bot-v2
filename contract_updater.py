@@ -491,7 +491,9 @@ def auto_update_instruments_on_startup(instruments: Dict[str, Dict]) -> Dict[str
                 return instruments
         except Exception:
             # If anything goes wrong deciding about cache staleness, fall through and refresh
-            logging.warning("⚠️ Error while evaluating contract cache expiry - refreshing scrip master")
+            logging.warning(
+                "⚠️ Error while evaluating contract cache expiry - refreshing scrip master"
+            )
 
     # Update from scrip master
     updated = update_all_instruments(instruments)

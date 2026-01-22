@@ -110,7 +110,9 @@ class Config:
         if env_token:
             try:
                 if not self._is_token_valid(env_token):
-                    logging.warning("⚠️ Environment ACCESS_TOKEN appears invalid; ignoring env token and falling back to credentials.json.")
+                    logging.warning(
+                        "⚠️ Environment ACCESS_TOKEN appears invalid; ignoring env token and falling back to credentials.json."
+                    )
                     env_token = None
             except Exception:
                 env_token = None
@@ -161,10 +163,14 @@ class Config:
         if self.ACCESS_TOKEN:
             try:
                 if not self._is_token_valid(self.ACCESS_TOKEN):
-                    logging.warning("⚠️ ACCESS_TOKEN appears expired or invalid; clearing token.")
+                    logging.warning(
+                        "⚠️ ACCESS_TOKEN appears expired or invalid; clearing token."
+                    )
                     self.ACCESS_TOKEN = ""
             except Exception:
-                logging.warning("⚠️ Could not validate ACCESS_TOKEN format; proceeding but token may be invalid.")
+                logging.warning(
+                    "⚠️ Could not validate ACCESS_TOKEN format; proceeding but token may be invalid."
+                )
 
         # --- Trading Configuration ---
         self._trading_config = self._load_trading_config()
@@ -302,11 +308,11 @@ class Config:
                 return False
             payload_b64 = parts[1]
             # Add padding for base64url
-            padding = '=' * (-len(payload_b64) % 4)
+            padding = "=" * (-len(payload_b64) % 4)
             payload_b64 += padding
             payload_bytes = base64.urlsafe_b64decode(payload_b64)
-            payload = json.loads(payload_bytes.decode('utf-8'))
-            exp = payload.get('exp')
+            payload = json.loads(payload_bytes.decode("utf-8"))
+            exp = payload.get("exp")
             if exp is None:
                 return False
             now = int(time.time())

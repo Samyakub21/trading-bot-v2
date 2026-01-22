@@ -56,7 +56,11 @@ from utils import (
     COOLDOWN_AFTER_LOSS,
     SIGNAL_COOLDOWN,
 )
-from contract_updater import load_scrip_master, find_current_month_future, save_contract_cache
+from contract_updater import (
+    load_scrip_master,
+    find_current_month_future,
+    save_contract_cache,
+)
 import socket_handler
 from state_stores import get_signal_tracker
 
@@ -654,15 +658,21 @@ def get_instrument_data(
                         # Persist updated instruments to contract cache so other processes pick up new future_id
                         try:
                             save_contract_cache(INSTRUMENTS)
-                            logger.info(f"Persisted updated contract cache after rollover for {instrument_key}")
+                            logger.info(
+                                f"Persisted updated contract cache after rollover for {instrument_key}"
+                            )
                         except Exception as e:
-                            logger.warning(f"Failed to persist contract cache after rollover: {e}")
+                            logger.warning(
+                                f"Failed to persist contract cache after rollover: {e}"
+                            )
 
                         # Clear any stale cached data for this instrument before retry
                         if cache_key in _DATA_CACHE:
                             try:
                                 del _DATA_CACHE[cache_key]
-                                logger.debug(f"Cleared stale _DATA_CACHE for {cache_key} after rollover")
+                                logger.debug(
+                                    f"Cleared stale _DATA_CACHE for {cache_key} after rollover"
+                                )
                             except Exception:
                                 pass
 
@@ -682,7 +692,9 @@ def get_instrument_data(
                             )
                             return None, None
                     else:
-                        logger.warning(f"No rollover contract found for {instrument_key}")
+                        logger.warning(
+                            f"No rollover contract found for {instrument_key}"
+                        )
                         return None, None
                 except Exception as e:
                     logger.error(f"Rollover attempt failed for {instrument_key}: {e}")

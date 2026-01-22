@@ -150,7 +150,9 @@ def _wrap_stream_utf8(stream):
         # If stream has a buffer (typical for stdout/stderr), wrap its buffer
         buf = getattr(stream, "buffer", None)
         if buf is not None:
-            return io.TextIOWrapper(buf, encoding="utf-8", errors="replace", line_buffering=True)
+            return io.TextIOWrapper(
+                buf, encoding="utf-8", errors="replace", line_buffering=True
+            )
     except Exception:
         pass
     # Fallback to original stream
