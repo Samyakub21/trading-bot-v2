@@ -192,7 +192,10 @@ class TrendFollowingStrategy(Strategy):
             df_15["vol_avg"] = df_15["volume"].rolling(window=vol_window).mean()
 
             trend = df_60.iloc[-2]
-            trigger = df_15.iloc[-2]
+            # Use last 15m bar if it's recent (near real-time), otherwise use previous closed bar
+            time_diff = datetime.now() - df_15.index.max().to_pydatetime()
+            trigger_idx = -1 if time_diff.total_seconds() < 90 else -2
+            trigger = df_15.iloc[trigger_idx]
 
             price = trigger["close"]
             vwap_val = trigger.get("VWAP_D", 0)
@@ -409,7 +412,10 @@ class MeanReversionStrategy(Strategy):
 
             df_15["vol_avg"] = df_15["volume"].rolling(window=20).mean()
 
-            trigger = df_15.iloc[-2]
+            # Use last 15m bar if it's recent (near real-time), otherwise use previous closed bar
+            time_diff = datetime.now() - df_15.index.max().to_pydatetime()
+            trigger_idx = -1 if time_diff.total_seconds() < 90 else -2
+            trigger = df_15.iloc[trigger_idx]
 
             price = trigger["close"]
             rsi_val = trigger["RSI"]
@@ -562,7 +568,10 @@ class MomentumBreakoutStrategy(Strategy):
             df_15["recent_high"] = df_15["high"].rolling(window=lookback).max()
             df_15["recent_low"] = df_15["low"].rolling(window=lookback).min()
 
-            trigger = df_15.iloc[-2]
+            # Use last 15m bar if it's recent (near real-time), otherwise use previous closed bar
+            time_diff = datetime.now() - df_15.index.max().to_pydatetime()
+            trigger_idx = -1 if time_diff.total_seconds() < 90 else -2
+            trigger = df_15.iloc[trigger_idx]
             prev = df_15.iloc[-3]
 
             price = trigger["close"]
@@ -768,7 +777,10 @@ class FinniftySpecificStrategy(Strategy):
             df_15["vol_avg"] = df_15["volume"].rolling(window=vol_window).mean()
 
             trend = df_60.iloc[-2]
-            trigger = df_15.iloc[-2]
+            # Use last 15m bar if it's recent (near real-time), otherwise use previous closed bar
+            time_diff = datetime.now() - df_15.index.max().to_pydatetime()
+            trigger_idx = -1 if time_diff.total_seconds() < 90 else -2
+            trigger = df_15.iloc[trigger_idx]
 
             price = trigger["close"]
             vwap_val = trigger.get("VWAP_D", 0)

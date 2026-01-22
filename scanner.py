@@ -2,10 +2,13 @@
 # SCANNER - Market Scanning and Signal Analysis
 # =============================================================================
 
-import matplotlib
+try:
+    import matplotlib
 
-# Fix for CI/Headless environments to prevent "matplotlib.__spec__ is not set"
-matplotlib.use("Agg")
+    # Fix for CI/Headless environments to prevent "matplotlib.__spec__ is not set"
+    matplotlib.use("Agg")
+except Exception:
+    matplotlib = None
 
 import json
 import logging
@@ -53,7 +56,7 @@ from utils import (
     COOLDOWN_AFTER_LOSS,
     SIGNAL_COOLDOWN,
 )
-from contract_updater import load_scrip_master, find_current_month_future
+from contract_updater import load_scrip_master, find_current_month_future, save_contract_cache
 import socket_handler
 from state_stores import get_signal_tracker
 
@@ -315,7 +318,10 @@ def analyze_instrument_signal(
         df_15["vol_avg"] = df_15["volume"].rolling(window=20).mean()
 
         trend = df_60.iloc[-2]
-        trigger = df_15.iloc[-2]
+        # Use last 15m bar if it's recent (near real-time), otherwise use previous closed bar
+        time_diff = datetime.now() - df_15.index.max().to_pydatetime()
+        trigger_idx = -1 if time_diff.total_seconds() < 90 else -2
+        trigger = df_15.iloc[trigger_idx]
 
         price = trigger["close"]
         vwap_val = trigger.get("VWAP_D", 0)
@@ -645,6 +651,21 @@ def get_instrument_data(
                         INSTRUMENTS[instrument_key]["future_id"] = new_id
                         INSTRUMENTS[instrument_key]["expiry_date"] = new_expiry
 
+                        # Persist updated instruments to contract cache so other processes pick up new future_id
+                        try:
+                            save_contract_cache(INSTRUMENTS)
+                            logger.info(f"Persisted updated contract cache after rollover for {instrument_key}")
+                        except Exception as e:
+                            logger.warning(f"Failed to persist contract cache after rollover: {e}")
+
+                        # Clear any stale cached data for this instrument before retry
+                        if cache_key in _DATA_CACHE:
+                            try:
+                                del _DATA_CACHE[cache_key]
+                                logger.debug(f"Cleared stale _DATA_CACHE for {cache_key} after rollover")
+                            except Exception:
+                                pass
+
                         # Retry data fetch once with new contract
                         data = dhan_intraday_minute_data(
                             dhan,
@@ -847,7 +868,10 @@ def analyze_instrument_signal(
         df_15["vol_avg"] = df_15["volume"].rolling(window=20).mean()
 
         trend = df_60.iloc[-2]
-        trigger = df_15.iloc[-2]
+        # Use last 15m bar if it's recent (near real-time), otherwise use previous closed bar
+        time_diff = datetime.now() - df_15.index.max().to_pydatetime()
+        trigger_idx = -1 if time_diff.total_seconds() < 90 else -2
+        trigger = df_15.iloc[trigger_idx]
 
         price = trigger["close"]
         vwap_val = trigger.get("VWAP_D", 0)
