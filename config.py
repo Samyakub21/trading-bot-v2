@@ -7,6 +7,8 @@ Loads trading parameters from trading_config.json or environment variables
 import os
 import json
 import logging
+import base64
+import time
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -94,11 +96,29 @@ class Config:
             load_dotenv()
 
         # --- Credentials ---
-        self.CLIENT_ID = os.getenv("DHAN_CLIENT_ID")
-        self.ACCESS_TOKEN = os.getenv("DHAN_ACCESS_TOKEN")
-        self.TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-        self.TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
-        self.SIGNAL_BOT_TOKEN = os.getenv("SIGNAL_BOT_TOKEN")
+        # Treat empty environment variables as not set (fallback to credentials.json)
+        def _env(name: str) -> Optional[str]:
+            v = os.getenv(name)
+            if v is None:
+                return None
+            v = str(v).strip()
+            return v if v else None
+
+        self.CLIENT_ID = _env("DHAN_CLIENT_ID")
+        # If environment provides an access token but it's malformed/invalid, ignore it
+        env_token = _env("DHAN_ACCESS_TOKEN")
+        if env_token:
+            try:
+                if not self._is_token_valid(env_token):
+                    logging.warning("⚠️ Environment ACCESS_TOKEN appears invalid; ignoring env token and falling back to credentials.json.")
+                    env_token = None
+            except Exception:
+                env_token = None
+
+        self.ACCESS_TOKEN = env_token
+        self.TELEGRAM_TOKEN = _env("TELEGRAM_TOKEN")
+        self.TELEGRAM_CHAT_ID = _env("TELEGRAM_CHAT_ID")
+        self.SIGNAL_BOT_TOKEN = _env("SIGNAL_BOT_TOKEN")
 
         # If not in environment, try to load from credentials.json
         if not all(
@@ -137,6 +157,15 @@ class Config:
                 "Please set DHAN_CLIENT_ID, DHAN_ACCESS_TOKEN, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID."
             )
 
+        # Validate access token expiry (JWT-like token expected)
+        if self.ACCESS_TOKEN:
+            try:
+                if not self._is_token_valid(self.ACCESS_TOKEN):
+                    logging.warning("⚠️ ACCESS_TOKEN appears expired or invalid; clearing token.")
+                    self.ACCESS_TOKEN = ""
+            except Exception:
+                logging.warning("⚠️ Could not validate ACCESS_TOKEN format; proceeding but token may be invalid.")
+
         # --- Trading Configuration ---
         self._trading_config = self._load_trading_config()
 
@@ -151,7 +180,27 @@ class Config:
             with open(credentials_file, "r") as f:
                 creds = json.load(f)
 
-            # Load Core Credentials (only if not already set from env)
+            # Allow Docker secrets to provide credentials (secure deployments)
+            secret_names = [
+                "DHAN_CLIENT_ID",
+                "DHAN_ACCESS_TOKEN",
+                "TELEGRAM_TOKEN",
+                "TELEGRAM_CHAT_ID",
+                "SIGNAL_BOT_TOKEN",
+            ]
+
+            for name in secret_names:
+                secret_file = Path("/run/secrets") / name.lower()
+                if secret_file.exists():
+                    try:
+                        with open(secret_file, "r") as sf:
+                            secret_value = sf.read().strip()
+                        if secret_value:
+                            os.environ[name] = secret_value
+                    except Exception:
+                        pass
+
+            # Load Core Credentials (only if not already set from env or secrets)
             if not self.CLIENT_ID:
                 self.CLIENT_ID = creds.get("CLIENT_ID", self.CLIENT_ID)
             if not self.ACCESS_TOKEN:
@@ -241,6 +290,29 @@ class Config:
 
     def get_trading_param(self, key: str, default: Any = None) -> Any:
         return self._trading_config.get(key, default)
+
+    def _is_token_valid(self, token: str, leeway: int = 60) -> bool:
+        """Basic validation for a JWT-like token: decode payload and check `exp`.
+
+        This avoids adding a dependency on PyJWT. Returns False if token is malformed or expired.
+        """
+        try:
+            parts = token.split(".")
+            if len(parts) < 2:
+                return False
+            payload_b64 = parts[1]
+            # Add padding for base64url
+            padding = '=' * (-len(payload_b64) % 4)
+            payload_b64 += padding
+            payload_bytes = base64.urlsafe_b64decode(payload_b64)
+            payload = json.loads(payload_bytes.decode('utf-8'))
+            exp = payload.get('exp')
+            if exp is None:
+                return False
+            now = int(time.time())
+            return now + leeway < int(exp)
+        except Exception:
+            return False
 
     # --- Properties ---
     @property

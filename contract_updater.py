@@ -173,9 +173,12 @@ def find_current_month_future(
             else:
                 continue
 
-            # Only consider contracts expiring in the future (with rollover buffer)
+            # Only consider contracts expiring in the future.
+            # NOTE: `days_to_expiry` is the number of days until expiry.
+            # We include contracts that expire at least today+0 (future) and
+            # let higher-level logic decide when to roll to the next month.
             days_to_expiry = (expiry_date - today).days
-            if days_to_expiry >= 2:  # Roll over if expiry is within 2 days
+            if days_to_expiry >= 0:
                 contract["_expiry_date"] = expiry_date
                 matching.append(contract)
 
@@ -319,6 +322,20 @@ def get_updated_instrument_config(
     updated_config = current_config.copy()
     updated_config["future_id"] = security_id
     updated_config["expiry_date"] = expiry_date.strftime("%Y-%m-%d")
+    # Determine option expiry date (options often expire a few days before futures)
+    # Default: no offset (option expiry == future expiry). For MCX instruments use a 5-day offset.
+    try:
+        exchange_norm = str(exchange).upper()
+        if "MCX" in exchange_norm:
+            option_offset_days = 5
+        else:
+            option_offset_days = 0
+
+        option_expiry = expiry_date - timedelta(days=option_offset_days)
+        updated_config["option_expiry_date"] = option_expiry.strftime("%Y-%m-%d")
+    except Exception:
+        # Fallback: set option_expiry_date same as expiry_date
+        updated_config["option_expiry_date"] = expiry_date.strftime("%Y-%m-%d")
     updated_config["lot_size"] = lot_size
 
     logging.info(
@@ -430,19 +447,51 @@ def auto_update_instruments_on_startup(instruments: Dict[str, Dict]) -> Dict[str
     # Try cache first
     cached = load_contract_cache()
     if cached:
-        # Merge cached data with base config
-        for key in instruments:
-            if key in cached:
-                instruments[key]["future_id"] = cached[key].get(
-                    "future_id", instruments[key]["future_id"]
-                )
-                instruments[key]["expiry_date"] = cached[key].get(
-                    "expiry_date", instruments[key]["expiry_date"]
-                )
-                instruments[key]["lot_size"] = cached[key].get(
-                    "lot_size", instruments[key]["lot_size"]
-                )
-        return instruments
+        # If any cached contract is within 2 days of expiry, force a refresh
+        try:
+            from datetime import datetime
+
+            today = datetime.now().date()
+            force_refresh = False
+            for key, val in cached.items():
+                expiry = val.get("expiry_date")
+                if not expiry:
+                    continue
+                try:
+                    exp_date = datetime.fromisoformat(str(expiry)).date()
+                except Exception:
+                    # try yyyy-mm-dd fallback
+                    try:
+                        exp_date = datetime.strptime(str(expiry), "%Y-%m-%d").date()
+                    except Exception:
+                        continue
+
+                days_to_expiry = (exp_date - today).days
+                # Force refresh only when expiry is upcoming within the next 2 days (0..2)
+                if 0 <= days_to_expiry <= 2:
+                    logging.info(
+                        f"🔁 Cached contract for {key} expires in {days_to_expiry} day(s); forcing refresh"
+                    )
+                    force_refresh = True
+                    break
+
+            if not force_refresh:
+                # Merge cached data with base config
+                for key in instruments:
+                    if key in cached:
+                        instruments[key]["future_id"] = cached[key].get(
+                            "future_id", instruments[key]["future_id"]
+                        )
+                        instruments[key]["expiry_date"] = cached[key].get(
+                            "expiry_date", instruments[key]["expiry_date"]
+                        )
+                        instruments[key]["lot_size"] = cached[key].get(
+                            "lot_size", instruments[key]["lot_size"]
+                        )
+                return instruments
+        except Exception:
+            # If anything goes wrong deciding about cache staleness, fall through and refresh
+            logging.warning("⚠️ Error while evaluating contract cache expiry - refreshing scrip master")
 
     # Update from scrip master
     updated = update_all_instruments(instruments)
