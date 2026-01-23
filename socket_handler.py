@@ -9,10 +9,11 @@ import asyncio
 import json
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, cast
+from typing import Any, Dict, List, Optional, Tuple, cast, Union
 from dhanhq import marketfeed
 
 from instruments import INSTRUMENTS, MULTI_SCAN_ENABLED, get_instruments_to_scan
+import scanner  # For live candle updates
 from config import config
 
 # =============================================================================
@@ -23,17 +24,24 @@ ACCESS_TOKEN = config.ACCESS_TOKEN
 DATA_DIR = Path(__file__).parent / "data"  # Force 'data' folder
 
 MARKET_FEED = None
+LOOP = None
 LATEST_LTP = 0.0
 OPTION_LTP = 0.0
 LAST_TICK_TIME = datetime.now()
 LAST_OPTION_TICK_TIME = datetime.now()
-INSTRUMENT_LTP = {}
+INSTRUMENT_LTP: Dict[str, Dict[str, Union[float, datetime, None]]] = {}
+# Initialize the LTP map with all known instruments to ensure heartbeat shows entries
+for _k in INSTRUMENTS.keys():
+    INSTRUMENT_LTP[_k] = {"ltp": None, "last_update": None}
 MESSAGE_COUNT = 0  # Track total messages received
 
 # Events
 SOCKET_RECONNECT_EVENT = threading.Event()
 SOCKET_HEALTHY = threading.Event()
 SHUTDOWN_EVENT = threading.Event()
+
+# Thread-safe access to LTP data
+LTP_LOCK = threading.Lock()
 
 
 def get_all_instrument_subscriptions(
@@ -84,13 +92,23 @@ def on_ticks(
         elif security_id == str(INSTRUMENTS[active_instrument]["future_id"]):
             LATEST_LTP = ltp
             LAST_TICK_TIME = datetime.now()
-        else:
-            for inst_key, inst in INSTRUMENTS.items():
-                if security_id == str(inst["future_id"]):
-                    INSTRUMENT_LTP[inst_key] = {
+            # Also update the instrument-specific LTP map so heartbeat can pick it up
+            try:
+                with LTP_LOCK:
+                    INSTRUMENT_LTP[active_instrument] = {
                         "ltp": ltp,
                         "last_update": datetime.now(),
                     }
+            except Exception:
+                pass
+        else:
+            for inst_key, inst in INSTRUMENTS.items():
+                if security_id == str(inst["future_id"]):
+                    with LTP_LOCK:
+                        INSTRUMENT_LTP[inst_key] = {
+                            "ltp": ltp,
+                            "last_update": datetime.now(),
+                        }
                     if inst_key == active_instrument:
                         LATEST_LTP = ltp
                         LAST_TICK_TIME = datetime.now()
@@ -156,11 +174,12 @@ def start_socket(
     active_trade: Dict[str, Any],
 ) -> None:
     """Start WebSocket connection"""
-    global MARKET_FEED
+    global MARKET_FEED, LOOP
 
     logging.info(">>> Socket Connecting...")
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
+    LOOP = loop
 
     instruments = get_all_instrument_subscriptions(active_instrument)
     MARKET_FEED = marketfeed.DhanFeed(client_id, access_token, instruments, "v2")
@@ -196,7 +215,13 @@ def start_socket(
             retry_delay = min(retry_delay * 2, 60)
 
     try:
-        MARKET_FEED.close_connection()
+        pass  # Close already scheduled
+    except:
+        pass
+
+    # Close the event loop
+    try:
+        loop.close()
     except:
         pass
 
@@ -234,6 +259,15 @@ def reset_option_ltp() -> None:
 
 def shutdown_socket() -> None:
     SHUTDOWN_EVENT.set()
+    # Close the websocket connection
+    if LOOP and MARKET_FEED:
+        try:
+            LOOP.call_soon_threadsafe(
+                lambda: asyncio.create_task(MARKET_FEED.disconnect())
+            )
+            logging.info("WebSocket close scheduled")
+        except Exception as e:
+            logging.debug(f"Error scheduling websocket close: {e}")
 
 
 def is_shutdown() -> bool:

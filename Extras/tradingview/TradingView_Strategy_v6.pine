@@ -2,7 +2,7 @@
 // © YourTradingBot
 
 //@version=6
-strategy("Trading Bot Signal Strategy", overlay=true, initial_capital=50000, default_qty_type=strategy.percent_of_equity, default_qty_value=100)
+strategy("Trading Bot Signal Strategy", overlay=true, initial_capital=50000, default_qty_type=strategy.percent_of_equity, default_qty_value=100, calc_on_every_tick=true)
 
 // ============================================================================
 // INPUT PARAMETERS
@@ -14,20 +14,31 @@ maxTradesPerDay = input.int(5, "Max Trades Per Day", group="Risk Management")
 // Signal Thresholds
 rsiBullishThreshold = input.int(60, "RSI Bullish Threshold", minval=50, maxval=70, group="Signal Settings")
 rsiBearishThreshold = input.int(40, "RSI Bearish Threshold", minval=30, maxval=50, group="Signal Settings")
-volumeMultiplier = input.float(1.2, "Volume Multiplier", minval=1.0, maxval=3.0, step=0.1, group="Signal Settings")
+adxThreshold = input.int(25, "ADX Threshold", minval=15, maxval=35, group="Signal Settings")
+volumeMultiplier = input.float(1.0, "Volume Multiplier", minval=1.0, maxval=3.0, step=0.1, group="Signal Settings")
 
 // Indicator Lengths
 ema50Length = input.int(50, "EMA Length (60min)", minval=20, maxval=200, group="Indicator Settings")
+ema200Length = input.int(200, "EMA 200 Length (15min)", minval=100, maxval=300, group="Indicator Settings")
 rsiLength = input.int(14, "RSI Length (15min)", minval=5, maxval=30, group="Indicator Settings")
+adxLength = input.int(14, "ADX Length", minval=5, maxval=30, group="Indicator Settings")
 vwapAnchor = input.string("Day", "VWAP Anchor", options=["Day", "Week", "Month"], group="Indicator Settings")
+
+// Time Filter (NSE Only)
+enableTimeFilter = input.bool(false, "Enable Time Filter (11:30-13:30)", group="Time Filter")
+timezoneOffset = input.int(330, "Timezone Offset (minutes from UTC)", group="Time Filter")
 
 // Stop Loss
 slBuffer = input.int(2, "SL Buffer Points", minval=1, maxval=10, group="Stop Loss")
+atrLength = input.int(14, "ATR Length for Trailing", minval=5, maxval=30, group="Stop Loss")
 
 // Display Options
 showSignals = input.bool(true, "Show Buy/Sell Signals", group="Display")
 showEMA = input.bool(true, "Show EMA (Trend)", group="Display")
 showVWAP = input.bool(true, "Show VWAP", group="Display")
+
+// Trading Mode
+enablePaperTrading = input.bool(true, "Enable Paper Trading (Signals Only)", group="Trading Mode")
 
 // ============================================================================
 // TIMEFRAME DETECTION
@@ -50,37 +61,61 @@ vwap_value = ta.vwap(hlc3)
 // RSI
 rsi = ta.rsi(close, rsiLength)
 
+// ADX for trend strength
+[diPlus, diMinus, adx] = ta.dmi(adxLength, adxLength)
+
+// EMA 200 for alignment
+ema200_value = ta.ema(close, ema200Length)
+
 // Volume Average
 volAvg = ta.sma(volume, 20)
+
+// ATR for stop loss
+atr_value = ta.atr(atrLength)
 
 // ============================================================================
 // SIGNAL LOGIC
 // ============================================================================
 
+// Time Filter (NSE: 11:30-13:30 IST)
+currentTime = minute(time) + hour(time) * 60 + timezoneOffset
+inTradeZone = not enableTimeFilter or (currentTime < 690 or currentTime > 810)  // 11:30 = 690 min, 13:30 = 810 min
+
 // Volume Confirmation
 volumeConfirmed = volume >= (volAvg * volumeMultiplier)
 
+// Trend Strength (ADX)
+trendStrength = adx > adxThreshold
+
 // BULLISH SIGNAL CONDITIONS:
 // 1. Trend: Close > EMA50 (60min)
-// 2. Trigger: Close > VWAP (15min)
-// 3. RSI > Bullish Threshold (15min)
-// 4. Volume Confirmed
+// 2. Alignment: Close > EMA200 (15min)
+// 3. Trigger: Close > VWAP (15min)
+// 4. Momentum: RSI > Bullish Threshold (15min)
+// 5. Strength: ADX > Threshold
+// 6. Volume Confirmed
+// 7. Time Filter: Outside 11:30-13:30 IST
 bullishTrendCondition = close > ema50_value
+bullishAlignmentCondition = close > ema200_value
 bullishTriggerCondition = close > vwap_value
 bullishRSICondition = rsi > rsiBullishThreshold
 
-bullishSignal = bullishTrendCondition and bullishTriggerCondition and bullishRSICondition and volumeConfirmed
+bullishSignal = bullishTrendCondition and bullishAlignmentCondition and bullishTriggerCondition and bullishRSICondition and trendStrength and volumeConfirmed and inTradeZone
 
 // BEARISH SIGNAL CONDITIONS:
 // 1. Trend: Close < EMA50 (60min)
-// 2. Trigger: Close < VWAP (15min)
-// 3. RSI < Bearish Threshold (15min)
-// 4. Volume Confirmed
+// 2. Alignment: Close < EMA200 (15min)
+// 3. Trigger: Close < VWAP (15min)
+// 4. Momentum: RSI < Bearish Threshold (15min)
+// 5. Strength: ADX > Threshold
+// 6. Volume Confirmed
+// 7. Time Filter: Outside 11:30-13:30 IST
 bearishTrendCondition = close < ema50_value
+bearishAlignmentCondition = close < ema200_value
 bearishTriggerCondition = close < vwap_value
 bearishRSICondition = rsi < rsiBearishThreshold
 
-bearishSignal = bearishTrendCondition and bearishTriggerCondition and bearishRSICondition and volumeConfirmed
+bearishSignal = bearishTrendCondition and bearishAlignmentCondition and bearishTriggerCondition and bearishRSICondition and trendStrength and volumeConfirmed and inTradeZone
 
 // ============================================================================
 // DYNAMIC STOP LOSS CALCULATION
@@ -110,44 +145,46 @@ f_getDynamicSL(isBuy, buffer) =>
     slPrice
 
 // ============================================================================
-// STEP LADDER TRAILING (R-MULTIPLE BASED)
+// STEP LADDER TRAILING STOP LOSS (R-MULTIPLE BASED)
 // ============================================================================
 
 var float entryPrice = na
 var float initialSL = na
 var float currentSL = na
 var int stepLevel = 0
+var float riskUnit = na
+var float currentR = na
 
-// Calculate risk unit (R)
-riskUnit = math.abs(entryPrice - initialSL)
-
-// Current profit in R-multiples
-currentR = strategy.position_size > 0 ? (close - entryPrice) / riskUnit : 
-           strategy.position_size < 0 ? (entryPrice - close) / riskUnit : 0.0
-
-// Update trailing stops based on R-multiples
-if strategy.position_size != 0
-    // Step 1: Lock 1R profit when 2R reached
-    if currentR >= 2.0 and stepLevel < 2
-        stepLevel := 2
-        currentSL := strategy.position_size > 0 ? entryPrice + (1.0 * riskUnit) : entryPrice - (1.0 * riskUnit)
-        strategy.exit("Step1", stop=currentSL)
+// Function to calculate ATR-based dynamic SL
+f_getATRSL(isBuy, buffer, atr) =>
+    var float slPrice = na
+    
+    if isBuy
+        // For buy: Use swing low of last 2 bars minus ATR buffer
+        swingLow = ta.lowest(low[1], 2)
+        slPrice := swingLow - (atr * buffer / 10)  // ATR multiplier adjustment
         
-    // Step 2: Lock 2R profit when 3R reached
-    else if currentR >= 3.0 and stepLevel < 3
-        stepLevel := 3
-        currentSL := strategy.position_size > 0 ? entryPrice + (2.0 * riskUnit) : entryPrice - (2.0 * riskUnit)
-        strategy.exit("Step2", stop=currentSL)
+        // Minimum SL distance check (5 points)
+        if (close - slPrice) < 5
+            slPrice := close - 10
+    else
+        // For sell: Use swing high of last 2 bars plus ATR buffer
+        swingHigh = ta.highest(high[1], 2)
+        slPrice := swingHigh + (atr * buffer / 10)  // ATR multiplier adjustment
         
-    // Step 3: Lock 3R profit when 4R reached
-    else if currentR >= 4.0 and stepLevel < 4
-        stepLevel := 4
-        currentSL := strategy.position_size > 0 ? entryPrice + (3.0 * riskUnit) : entryPrice - (3.0 * riskUnit)
-        strategy.exit("Step3", stop=currentSL)
+        // Minimum SL distance check (5 points)
+        if (slPrice - close) < 5
+            slPrice := close + 10
+    
+    slPrice
 
 // ============================================================================
 // STRATEGY EXECUTION
 // ============================================================================
+
+// Calculate stop losses on every bar for consistency
+buySL = f_getATRSL(true, slBuffer, atr_value)
+sellSL = f_getATRSL(false, slBuffer, atr_value)
 
 // Entry Conditions - only on 15min timeframe or if you're on 1min/5min
 if is15min or timeframe.in_seconds(timeframe.period) < 900 // 900 seconds = 15 minutes
@@ -155,30 +192,70 @@ if is15min or timeframe.in_seconds(timeframe.period) < 900 // 900 seconds = 15 m
     // LONG ENTRY (CALL)
     if bullishSignal and strategy.position_size == 0
         entryPrice := close
-        initialSL := f_getDynamicSL(true, slBuffer)
+        initialSL := buySL
         currentSL := initialSL
         stepLevel := 0
+        riskUnit := math.abs(entryPrice - initialSL)
         
-        strategy.entry("CALL", strategy.long, comment="CALL Entry")
-        strategy.exit("Initial SL", "CALL", stop=initialSL, limit=entryPrice + (5 * riskUnit))
+        if not enablePaperTrading
+            strategy.entry("CALL", strategy.long, comment="CALL Entry")
+            strategy.exit("Initial SL", "CALL", stop=initialSL)
 
     // SHORT ENTRY (PUT)
     if bearishSignal and strategy.position_size == 0
         entryPrice := close
-        initialSL := f_getDynamicSL(false, slBuffer)
+        initialSL := sellSL
         currentSL := initialSL
         stepLevel := 0
+        riskUnit := math.abs(entryPrice - initialSL)
         
-        strategy.entry("PUT", strategy.short, comment="PUT Entry")
-        strategy.exit("Initial SL", "PUT", stop=initialSL, limit=entryPrice - (5 * riskUnit))
+        if not enablePaperTrading
+            strategy.entry("PUT", strategy.short, comment="PUT Entry")
+            strategy.exit("Initial SL", "PUT", stop=initialSL)
 
-// Jackpot Exit (1:5 target)
-if math.abs(currentR) >= 5.0
-    strategy.close_all(comment="1:5 Target Hit")
-    entryPrice := na
-    initialSL := na
-    currentSL := na
-    stepLevel := 0
+// Update trailing stops on every bar if in position
+if strategy.position_size != 0
+    currentProfit = strategy.position_size > 0 ? (close - entryPrice) : (entryPrice - close)
+    currentR := currentProfit / riskUnit
+    
+    // Step Ladder Logic:
+    // 2R reached → Lock 1R profit
+    // 3R reached → Lock 2R profit  
+    // 4R reached → Lock 3R profit
+    // 5R reached → Exit position
+    
+    if currentR >= 2.0 and stepLevel < 2
+        stepLevel := 2
+        currentSL := strategy.position_size > 0 ? entryPrice + (1.0 * riskUnit) : entryPrice - (1.0 * riskUnit)
+        if not enablePaperTrading
+            strategy.exit("Lock 1R", stop=currentSL)
+        
+    else if currentR >= 3.0 and stepLevel < 3
+        stepLevel := 3
+        currentSL := strategy.position_size > 0 ? entryPrice + (2.0 * riskUnit) : entryPrice - (2.0 * riskUnit)
+        if not enablePaperTrading
+            strategy.exit("Lock 2R", stop=currentSL)
+        
+    else if currentR >= 4.0 and stepLevel < 4
+        stepLevel := 4
+        currentSL := strategy.position_size > 0 ? entryPrice + (3.0 * riskUnit) : entryPrice - (3.0 * riskUnit)
+        if not enablePaperTrading
+            strategy.exit("Lock 3R", stop=currentSL)
+        
+    else if currentR >= 5.0 and stepLevel < 5
+        stepLevel := 5
+        if not enablePaperTrading
+            strategy.close_all(comment="5R Target Hit")
+        // Reset variables
+        entryPrice := na
+        initialSL := na
+        currentSL := na
+        stepLevel := 0
+        riskUnit := na
+
+// ============================================================================
+// VISUAL ELEMENTS
+// ============================================================================
 
 // ============================================================================
 // VISUAL ELEMENTS
@@ -187,12 +264,15 @@ if math.abs(currentR) >= 5.0
 // Plot EMA (Trend Line)
 plot(showEMA ? ema50_value : na, "EMA 50 (60min)", color=color.orange, linewidth=2)
 
+// Plot EMA 200 (Alignment)
+plot(showEMA ? ema200_value : na, "EMA 200 (15min)", color=color.purple, linewidth=1)
+
 // Plot VWAP
 plot(showVWAP ? vwap_value : na, "VWAP", color=color.blue, linewidth=2)
 
 // Plot Buy/Sell Signals
-plotshape(showSignals and bullishSignal, "Buy Signal", shape.triangleup, location.belowbar, color.new(color.green, 0), size=size.small)
-plotshape(showSignals and bearishSignal, "Sell Signal", shape.triangledown, location.abovebar, color.new(color.red, 0), size=size.small)
+plotshape(showSignals and bullishSignal and strategy.position_size == 0, "Buy Signal", shape.triangleup, location.belowbar, color.new(color.green, 0), size=size.small)
+plotshape(showSignals and bearishSignal and strategy.position_size == 0, "Sell Signal", shape.triangledown, location.abovebar, color.new(color.red, 0), size=size.small)
 
 // Plot Entry Price Line
 plot(strategy.position_size != 0 ? entryPrice : na, "Entry Price", color=color.white, linewidth=1, style=plot.style_linebr)
@@ -207,7 +287,7 @@ plot(strategy.position_size != 0 and currentSL != initialSL ? currentSL : na, "T
 // INFORMATION TABLE
 // ============================================================================
 
-var table infoTable = table.new(position.top_right, 2, 8, bgcolor=color.new(color.black, 85), border_width=2, border_color=color.gray)
+var table infoTable = table.new(position.top_right, 2, 10, bgcolor=color.new(color.black, 85), border_width=2, border_color=color.gray)
 
 if barstate.islast
     // Header
@@ -219,46 +299,56 @@ if barstate.islast
     table.cell(infoTable, 0, 1, "RSI", text_color=color.white)
     table.cell(infoTable, 1, 1, str.tostring(rsi, "#.##"), text_color=rsiColor)
     
+    // ADX
+    adxColor = adx > adxThreshold ? color.green : color.gray
+    table.cell(infoTable, 0, 2, "ADX", text_color=color.white)
+    table.cell(infoTable, 1, 2, str.tostring(adx, "#.##"), text_color=adxColor)
+    
     // Volume vs Avg
     volRatio = volAvg > 0 ? volume / volAvg : 1.0
     volColor = volRatio >= volumeMultiplier ? color.green : color.gray
-    table.cell(infoTable, 0, 2, "Vol/Avg", text_color=color.white)
-    table.cell(infoTable, 1, 2, str.tostring(volRatio, "#.##") + "x", text_color=volColor)
+    table.cell(infoTable, 0, 3, "Vol/Avg", text_color=color.white)
+    table.cell(infoTable, 1, 3, str.tostring(volRatio, "#.##") + "x", text_color=volColor)
     
     // Trend Status
     trendText = close > ema50_value ? "BULLISH" : close < ema50_value ? "BEARISH" : "NEUTRAL"
     trendColor = close > ema50_value ? color.green : close < ema50_value ? color.red : color.gray
-    table.cell(infoTable, 0, 3, "Trend", text_color=color.white)
-    table.cell(infoTable, 1, 3, trendText, text_color=trendColor)
+    table.cell(infoTable, 0, 4, "Trend", text_color=color.white)
+    table.cell(infoTable, 1, 4, trendText, text_color=trendColor)
+    
+    // EMA200 Alignment
+    ema200Text = close > ema200_value ? "ABOVE" : "BELOW"
+    ema200Color = close > ema200_value ? color.green : color.red
+    table.cell(infoTable, 0, 5, "EMA200", text_color=color.white)
+    table.cell(infoTable, 1, 5, ema200Text, text_color=ema200Color)
     
     // VWAP Status
     vwapText = close > vwap_value ? "ABOVE" : "BELOW"
     vwapColor = close > vwap_value ? color.green : color.red
-    table.cell(infoTable, 0, 4, "VWAP", text_color=color.white)
-    table.cell(infoTable, 1, 4, vwapText, text_color=vwapColor)
+    table.cell(infoTable, 0, 6, "VWAP", text_color=color.white)
+    table.cell(infoTable, 1, 6, vwapText, text_color=vwapColor)
+    
+    // Market Zone
+    zoneText = inTradeZone ? "TRADE" : "NO-TRADE"
+    zoneColor = inTradeZone ? color.green : color.red
+    table.cell(infoTable, 0, 7, "Market Zone", text_color=color.white)
+    table.cell(infoTable, 1, 7, zoneText, text_color=zoneColor)
     
     // Position Status
     posText = strategy.position_size > 0 ? "LONG (CALL)" : strategy.position_size < 0 ? "SHORT (PUT)" : "FLAT"
     posColor = strategy.position_size > 0 ? color.green : strategy.position_size < 0 ? color.red : color.gray
-    table.cell(infoTable, 0, 5, "Position", text_color=color.white)
-    table.cell(infoTable, 1, 5, posText, text_color=posColor)
+    table.cell(infoTable, 0, 8, "Position", text_color=color.white)
+    table.cell(infoTable, 1, 8, posText, text_color=posColor)
     
     // R-Multiple
     if strategy.position_size != 0
         rText = str.tostring(currentR, "#.##") + "R"
         rColor = currentR > 0 ? color.green : color.red
-        table.cell(infoTable, 0, 6, "Current R", text_color=color.white)
-        table.cell(infoTable, 1, 6, rText, text_color=rColor)
-        
-        // Step Level
-        stepText = "Step " + str.tostring(stepLevel)
-        table.cell(infoTable, 0, 7, "Trail Level", text_color=color.white)
-        table.cell(infoTable, 1, 7, stepText, text_color=color.yellow)
+        table.cell(infoTable, 0, 9, "Current R", text_color=color.white)
+        table.cell(infoTable, 1, 9, rText, text_color=rColor)
     else
-        table.cell(infoTable, 0, 6, "", text_color=color.white)
-        table.cell(infoTable, 1, 6, "", text_color=color.white)
-        table.cell(infoTable, 0, 7, "", text_color=color.white)
-        table.cell(infoTable, 1, 7, "", text_color=color.white)
+        table.cell(infoTable, 0, 9, "", text_color=color.white)
+        table.cell(infoTable, 1, 9, "", text_color=color.white)
 
 // ============================================================================
 // BACKGROUND COLORING (OPTIONAL)
@@ -272,40 +362,61 @@ if barstate.islast
 // bgcolor(bearishZone ? color.new(color.red, 95) : na)
 
 // ============================================================================
-// ALERTS
-// ============================================================================
-
-// Alert conditions for automated trading
-alertcondition(bullishSignal, "Bullish Signal", "CALL Entry Signal Triggered!")
-alertcondition(bearishSignal, "Bearish Signal", "PUT Entry Signal Triggered!")
-alertcondition(currentR >= 2.0 and stepLevel == 2, "Step 1 Reached", "Locked 1R Profit (Step 1)")
-alertcondition(currentR >= 3.0 and stepLevel == 3, "Step 2 Reached", "Locked 2R Profit (Step 2)")
-alertcondition(currentR >= 4.0 and stepLevel == 4, "Step 3 Reached", "Locked 3R Profit (Step 3)")
-alertcondition(currentR >= 5.0, "Jackpot Target", "1:5 Target Hit - Jackpot Exit!")
-
-// ============================================================================
 // NOTES
 // ============================================================================
-// This Pine Script replicates the trading bot logic:
-// 
+// This Pine Script replicates the Python trading bot logic:
+//
+// SIGNAL CONDITIONS (7-Point Filter System):
+//
 // BULLISH SIGNAL (CALL):
-// - 60min: Close > EMA50 (Trend confirmation)
-// - 15min: Close > VWAP (Trigger)
-// - 15min: RSI > 60 (Momentum confirmation)
-// - Volume > 1.2x Average (Volume confirmation)
+// 1. Trend: Close > EMA50 (60min) - Primary trend confirmation
+// 2. Alignment: Close > EMA200 (15min) - Secondary trend alignment
+// 3. Trigger: Close > VWAP (15min) - Entry trigger point
+// 4. Momentum: RSI > 60 (15min) - Momentum confirmation
+// 5. Strength: ADX > 25 - Trend strength requirement
+// 6. Volume: Volume > 1.2x Average - Volume confirmation
+// 7. Time Filter: Outside 11:30-13:30 IST (NSE no-trade zone)
 //
 // BEARISH SIGNAL (PUT):
-// - 60min: Close < EMA50 (Trend confirmation)
-// - 15min: Close < VWAP (Trigger)
-// - 15min: RSI < 40 (Momentum confirmation)
-// - Volume > 1.2x Average (Volume confirmation)
+// 1. Trend: Close < EMA50 (60min) - Primary trend confirmation
+// 2. Alignment: Close < EMA200 (15min) - Secondary trend alignment
+// 3. Trigger: Close < VWAP (15min) - Entry trigger point
+// 4. Momentum: RSI < 40 (15min) - Momentum confirmation
+// 5. Strength: ADX > 25 - Trend strength requirement
+// 6. Volume: Volume > 1.2x Average - Volume confirmation
+// 7. Time Filter: Outside 11:30-13:30 IST (NSE no-trade zone)
 //
 // RISK MANAGEMENT:
-// - Dynamic SL based on swing high/low
-// - Step Ladder Trailing:
-//   * 1:2 → Lock 1R profit
-//   * 1:3 → Lock 2R profit
-//   * 1:4 → Lock 3R profit
+// - Hybrid ATR Dynamic SL: Based on swing high/low of last 2 bars with ATR buffer
+// - Step Ladder Trailing (R-Multiple Based):
+//   * 2R reached → Lock 1R profit (Step 1)
+//   * 3R reached → Lock 2R profit (Step 2)
+//   * 4R reached → Lock 3R profit (Step 3)
+//   * 5R reached → Exit position (Jackpot 1:5 target)
+//
+// TIME FILTER:
+// - NSE Market Hours: 9:15 AM - 3:30 PM IST
+// - No-Trade Zone: 11:30 AM - 1:30 PM IST (Lunch break)
+// - All signals filtered during no-trade zone when enabled
+//
+// TECHNICAL INDICATORS:
+// - EMA50 (60min): Primary trend indicator
+// - EMA200 (15min): Trend alignment filter
+// - VWAP (Daily): Volume-weighted trigger point
+// - RSI (14-period, 15min): Momentum oscillator
+// - ADX (14-period): Trend strength meter
+// - Volume SMA (20-period): Volume baseline
+//
+// BACKTESTING RECOMMENDATIONS:
+// - Test on 15-minute timeframe for optimal results
+// - Use historical data from 2020 onwards for comprehensive testing
+// - Adjust ADX threshold (20-30) based on market conditions
+// - Fine-tune volume multiplier (1.0-2.0) for different volatility regimes
+//
+// ALERTS:
+// - Entry signals for automated trading platforms
+// - Step progression alerts for risk management monitoring
+// - Target achievement notifications
 //   * 1:5 → Full exit (Jackpot)
 //
 // USAGE:

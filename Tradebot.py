@@ -78,15 +78,22 @@ def setup_logging():
     # Create formatter
     formatter = logging.Formatter(LOG_FORMAT, datefmt=LOG_DATE_FORMAT)
 
-    # Console handler (INFO level)
-    console_handler = logging.StreamHandler()
+    # Console handler (INFO level) - ensure UTF-8 wrapped stream for Windows
+    try:
+        console_stream = _wrap_stream_utf8(sys.stdout)
+    except Exception:
+        console_stream = sys.stdout
+    console_handler = logging.StreamHandler(stream=console_stream)
     console_handler.setLevel(logging.INFO)
     console_handler.setFormatter(formatter)
     root_logger.addHandler(console_handler)
 
     # File handler (DEBUG level with rotation)
     file_handler = RotatingFileHandler(
-        LOG_FILE_PATH, maxBytes=LOG_FILE_MAX_BYTES, backupCount=LOG_FILE_BACKUP_COUNT
+        LOG_FILE_PATH,
+        maxBytes=LOG_FILE_MAX_BYTES,
+        backupCount=LOG_FILE_BACKUP_COUNT,
+        encoding="utf-8",
     )
     file_handler.setLevel(logging.DEBUG)
     file_handler.setFormatter(formatter)
@@ -133,32 +140,35 @@ except ImportError:
 # =============================================================================
 # LOGGING CONFIGURATION
 # =============================================================================
+import sys
+import io
+
+
+def _wrap_stream_utf8(stream):
+    """Return a text stream wrapper using UTF-8 encoding (safe for Windows consoles)."""
+    try:
+        # If stream has a buffer (typical for stdout/stderr), wrap its buffer
+        buf = getattr(stream, "buffer", None)
+        if buf is not None:
+            return io.TextIOWrapper(
+                buf, encoding="utf-8", errors="replace", line_buffering=True
+            )
+    except Exception:
+        pass
+    # Fallback to original stream
+    return stream
+
+
+# Build handlers explicitly so we can ensure UTF-8 console output on Windows
+console_stream = _wrap_stream_utf8(sys.stdout)
+console_handler = logging.StreamHandler(stream=console_stream)
+file_handler = logging.FileHandler("bot.log", encoding="utf-8")
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
-    handlers=[
-        logging.FileHandler("bot.log", encoding="utf-8"),
-        logging.StreamHandler(),
-    ],
+    handlers=[file_handler, console_handler],
 )
-
-# Configure StreamHandler to use UTF-8 encoding for Windows console
-for handler in logging.root.handlers:
-    if isinstance(handler, logging.StreamHandler) and hasattr(handler.stream, "fileno"):
-        stream_name = getattr(handler.stream, "name", None)
-        if stream_name in ["<stdout>", "<stderr>"]:
-            try:
-                handler.setStream(
-                    open(
-                        handler.stream.fileno(),
-                        mode="w",
-                        encoding="utf-8",
-                        buffering=1,
-                        closefd=False,
-                    )
-                )
-            except (OSError, AttributeError):
-                pass
 
 
 # =============================================================================
@@ -287,7 +297,7 @@ class TradingBot:
 
         # Wait for threads to finish
         logging.info("Waiting for threads to finish...")
-        time.sleep(3)
+        time.sleep(5)
 
         # Stop heartbeat
         if HEARTBEAT_AVAILABLE:
@@ -312,6 +322,9 @@ class TradingBot:
         logging.info("=" * 60)
         logging.info("🛑 TRADING BOT STOPPED")
         logging.info("=" * 60)
+
+        # Shutdown logging to prevent errors on exit
+        logging.shutdown()
 
     def log_startup_info(self) -> None:
         """Log startup information including configuration and market status"""
@@ -510,13 +523,17 @@ class TradingBot:
         self.threads.append(socket_thread)
 
         logging.info("Waiting for market data feed...")
-        for _ in range(15):  # Wait up to 15 seconds
-            if socket_handler.get_latest_ltp() > 0:
-                logging.info("✅ Market data received")
-                break
-            time.sleep(1)
-        else:
-            logging.warning("⚠️ Starting scanner without live data (LTP is 0)")
+        try:
+            for _ in range(15):  # Wait up to 15 seconds
+                if socket_handler.get_latest_ltp() > 0:
+                    logging.info("✅ Market data received")
+                    break
+                time.sleep(1)
+            else:
+                logging.warning("⚠️ Starting scanner without live data (LTP is 0)")
+        except KeyboardInterrupt:
+            self.graceful_shutdown("User interrupted (Ctrl+C) during startup")
+            return
 
         # Start scanner thread
         scanner_thread = self._start_scanner_thread()

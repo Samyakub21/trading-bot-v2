@@ -22,15 +22,26 @@ from ta.trend import EMAIndicator, ADXIndicator
 from ta.momentum import RSIIndicator
 from ta.volatility import BollingerBands, AverageTrueRange
 import logging
+import numpy as np
 
 
-def calculate_anchored_vwap(df: pd.DataFrame) -> pd.Series:
-    """Calculate Intraday VWAP anchored to the start of each day."""
+def calculate_anchored_vwap(
+    df: pd.DataFrame, reset_time: Optional[str] = None
+) -> pd.Series:
+    """Calculate Intraday VWAP anchored to the start of each day or session."""
     typical_price = (df["high"] + df["low"] + df["close"]) / 3
     vp = typical_price * df["volume"]
-    cumulative_vp = vp.groupby(df.index.date).cumsum()
-    cumulative_vol = df["volume"].groupby(df.index.date).cumsum()
-    return cumulative_vp / cumulative_vol
+
+    if reset_time:
+        reset_dt = pd.Timestamp(reset_time).time()
+        session = df.index.time >= reset_dt
+        session_key = df.index.date.astype(str) + "_" + session.astype(str)
+    else:
+        session_key = df.index.date
+
+    cumulative_vp = vp.groupby(session_key).cumsum()
+    cumulative_vol = df["volume"].groupby(session_key).cumsum()
+    return cumulative_vp / cumulative_vol.replace(0, np.nan)
 
 
 # =============================================================================
@@ -156,6 +167,15 @@ class TrendFollowingStrategy(Strategy):
                 atr_mult = 2.0  # Higher multiplier for Crude Oil noise
             atr_len = self.get_param("atr_length", 14)
 
+            # Ensure we have enough historical bars to compute indicators
+            required_15 = max(rsi_len, 200, atr_len, 14, vol_window)
+            # Need at least a few extra bars to access -2 index safely
+            if df_15.shape[0] < (required_15 + 3) or df_60.shape[0] < 2:
+                self.logger.info(
+                    f"SKIP [{self.instrument}]: Insufficient data for indicators (have {df_15.shape[0]}x15m, {df_60.shape[0]}x60m, need {required_15 + 3}x15m and 2x60m)"
+                )
+                return None
+
             # Calculate indicators
             # 1. EMA on 60min
             df_60["EMA"] = EMAIndicator(
@@ -163,8 +183,11 @@ class TrendFollowingStrategy(Strategy):
             ).ema_indicator()
             # 2. RSI on 15min
             df_15["RSI"] = RSIIndicator(close=df_15["close"], window=rsi_len).rsi()
-            # 3. VWAP (Custom Anchored)
-            df_15["VWAP_D"] = calculate_anchored_vwap(df_15)
+            # 3. VWAP (Custom Anchored) - Session-based for MCX
+            reset_time = (
+                "15:30" if self.instrument in ["CRUDEOIL", "NATGASMINI"] else None
+            )
+            df_15["VWAP_D"] = calculate_anchored_vwap(df_15, reset_time)
             # 4. ADX on 15min
             df_15["ADX"] = ADXIndicator(
                 high=df_15["high"], low=df_15["low"], close=df_15["close"], window=14
@@ -185,6 +208,18 @@ class TrendFollowingStrategy(Strategy):
             trend = df_60.iloc[-2]
             trigger = df_15.iloc[-2]
 
+            # Data robustness: Check for NaN in key indicators or zero volume
+            if (
+                pd.isna(trigger.get("RSI"))
+                or pd.isna(trigger.get("ADX"))
+                or pd.isna(trigger.get("VWAP_D"))
+                or trigger.get("volume", 0) == 0
+            ):
+                self.logger.info(
+                    f"SKIP [{self.instrument}]: Invalid data in trigger row (NaN or zero volume)"
+                )
+                return None
+
             price = trigger["close"]
             vwap_val = trigger.get("VWAP_D", 0)
             current_volume = trigger["volume"]
@@ -195,6 +230,12 @@ class TrendFollowingStrategy(Strategy):
             adx_val = trigger["ADX"]
             ema200_val = trigger["EMA200"]
             atr_val = trigger["ATR"]
+
+            # Adaptive ATR: Check for high volatility
+            atr_rolling_mean = df_15["ATR"].rolling(window=20).mean().iloc[-1]
+            if pd.isna(atr_rolling_mean):
+                atr_rolling_mean = atr_val
+            volatility_multiplier = 1.25 if atr_val > 1.5 * atr_rolling_mean else 1.0
 
             # Volume confirmation
             volume_confirmed = (
@@ -252,14 +293,18 @@ class TrendFollowingStrategy(Strategy):
                 # Hybrid Dynamic Trailing Stop Loss Logic
                 atr_mult = self.get_param("atr_multiplier", 1.5)
 
-                # Initial SL: 1.5x ATR from entry
-                initial_sl_distance = atr_val * 1.5
+                if self.instrument == "CRUDEOIL":
+                    atr_mult = 2.0  # Higher multiplier for Crude Oil noise
+                atr_len = self.get_param("atr_length", 14)
 
-                # Activation Point: 1.5x ATR favorable move (1:1 R:R)
-                activation_distance = atr_val * 1.5
+                # Initial SL: atr_mult * ATR * volatility_multiplier
+                initial_sl_distance = atr_val * atr_mult * volatility_multiplier
 
-                # Dynamic Trailing: 1.5x ATR from highest price after activation
-                trail_distance = atr_val * 1.5
+                # Activation Point: 1.5x ATR * volatility_multiplier favorable move (1:1 R:R)
+                activation_distance = atr_val * 1.5 * volatility_multiplier
+
+                # Dynamic Trailing: 1.5x ATR * volatility_multiplier from highest price after activation
+                trail_distance = atr_val * 1.5 * volatility_multiplier
 
                 # Maximum profit cap for indices (1:2.5 R:R)
                 max_profit_mult = None
@@ -268,11 +313,13 @@ class TrendFollowingStrategy(Strategy):
 
                 exit_logic = {
                     "initial_sl_distance": round(initial_sl_distance, 2),
-                    "activation_atr_mult": 1.5,  # 1.5x ATR for activation
-                    "trail_atr_mult": 1.5,  # 1.5x ATR for trailing
+                    "activation_atr_mult": 1.5
+                    * volatility_multiplier,  # 1.5x ATR for activation
+                    "trail_atr_mult": 1.5
+                    * volatility_multiplier,  # 1.5x ATR for trailing
                     "max_profit_mult": max_profit_mult,  # None for commodities, 2.5 for indices
                     "atr_value": round(atr_val, 2),
-                    "atr_multiplier": atr_mult,
+                    "atr_multiplier": atr_mult * volatility_multiplier,
                 }
 
                 return {
@@ -400,7 +447,10 @@ class MeanReversionStrategy(Strategy):
 
             df_15["vol_avg"] = df_15["volume"].rolling(window=20).mean()
 
-            trigger = df_15.iloc[-2]
+            # Use last 15m bar if it's recent (near real-time), otherwise use previous closed bar
+            time_diff = datetime.now() - df_15.index.max().to_pydatetime()
+            trigger_idx = -1 if time_diff.total_seconds() < 90 else -2
+            trigger = df_15.iloc[trigger_idx]
 
             price = trigger["close"]
             rsi_val = trigger["RSI"]
@@ -522,9 +572,17 @@ class MomentumBreakoutStrategy(Strategy):
             atr_mult = self.get_param("atr_multiplier", 1.5)
             atr_len = self.get_param("atr_length", 14)
 
+            # Ensure sufficient data for indicators and lookback
+            required_15 = max(rsi_len, atr_len, 14, lookback, 3)
+            if df_15.shape[0] < (required_15 + 3):
+                self.logger.info(
+                    f"SKIP [{self.instrument}]: Insufficient 15m data (have {df_15.shape[0]}, need {required_15 + 3})"
+                )
+                return None
+
             # Instrument-specific overrides
             if self.instrument == "NATGASMINI":
-                volume_mult = 1.8
+                pass  # Use param value
             elif self.instrument == "MIDCPNIFTY":
                 volume_mult = 2.0
 
@@ -545,6 +603,7 @@ class MomentumBreakoutStrategy(Strategy):
             df_15["recent_high"] = df_15["high"].rolling(window=lookback).max()
             df_15["recent_low"] = df_15["low"].rolling(window=lookback).min()
 
+            # Use last 15m bar if it's recent (near real-time), otherwise use previous closed bar
             trigger = df_15.iloc[-2]
             prev = df_15.iloc[-3]
 
@@ -556,6 +615,23 @@ class MomentumBreakoutStrategy(Strategy):
             recent_low = prev["recent_low"]
             current_volume = trigger["volume"]
             avg_volume = trigger.get("vol_avg", current_volume)
+
+            # Data robustness: Check for NaN in key indicators or zero volume
+            if (
+                pd.isna(trigger.get("RSI"))
+                or pd.isna(trigger.get("ADX"))
+                or trigger.get("volume", 0) == 0
+            ):
+                self.logger.info(
+                    f"SKIP [{self.instrument}]: Invalid data in trigger row (NaN or zero volume)"
+                )
+                return None
+
+            # Adaptive ATR: Check for high volatility
+            atr_rolling_mean = df_15["ATR"].rolling(window=20).mean().iloc[-1]
+            if pd.isna(atr_rolling_mean):
+                atr_rolling_mean = atr_val
+            volatility_multiplier = 1.25 if atr_val > 1.5 * atr_rolling_mean else 1.0
 
             # Volume confirmation (strong volume required)
             volume_confirmed = (
@@ -620,15 +696,16 @@ class MomentumBreakoutStrategy(Strategy):
             if signal:
                 # Hybrid Dynamic Trailing Stop Loss Logic
                 atr_mult = self.get_param("atr_multiplier", 1.5)
+                atr_len = self.get_param("atr_length", 14)
 
-                # Initial SL: 1.5x ATR from entry
-                initial_sl_distance = atr_val * 1.5
+                # Initial SL: atr_mult * ATR * volatility_multiplier
+                initial_sl_distance = atr_val * atr_mult * volatility_multiplier
 
-                # Activation Point: 1.5x ATR favorable move (1:1 R:R)
-                activation_distance = atr_val * 1.5
+                # Activation Point: 1.5x ATR * volatility_multiplier favorable move (1:1 R:R)
+                activation_distance = atr_val * 1.5 * volatility_multiplier
 
-                # Dynamic Trailing: 1.5x ATR from highest price after activation
-                trail_distance = atr_val * 1.5
+                # Dynamic Trailing: 1.5x ATR * volatility_multiplier from highest price after activation
+                trail_distance = atr_val * 1.5 * volatility_multiplier
 
                 # Maximum profit cap for indices (1:2.5 R:R)
                 max_profit_mult = None
@@ -637,11 +714,13 @@ class MomentumBreakoutStrategy(Strategy):
 
                 exit_logic = {
                     "initial_sl_distance": round(initial_sl_distance, 2),
-                    "activation_atr_mult": 1.5,  # 1.5x ATR for activation
-                    "trail_atr_mult": 1.5,  # 1.5x ATR for trailing
+                    "activation_atr_mult": 1.5
+                    * volatility_multiplier,  # 1.5x ATR for activation
+                    "trail_atr_mult": 1.5
+                    * volatility_multiplier,  # 1.5x ATR for trailing
                     "max_profit_mult": max_profit_mult,  # None for commodities, 2.5 for indices
                     "atr_value": round(atr_val, 2),
-                    "atr_multiplier": atr_mult,
+                    "atr_multiplier": atr_mult * volatility_multiplier,
                 }
 
                 result = {
@@ -664,6 +743,34 @@ class MomentumBreakoutStrategy(Strategy):
                 # The hybrid system handles all trailing logic now
 
                 return result
+
+            # If no signal, log rejection reasons to make skips visible in INFO logs
+            reasons = []
+            if not volume_confirmed:
+                reasons.append(
+                    f"Volume too low ({current_volume:.0f} < {avg_volume * volume_mult:.0f})"
+                )
+            if not adx_confirmed:
+                reasons.append(f"ADX too low ({adx_val:.1f} < {adx_threshold})")
+            # RSI checks
+            if self.instrument == "NATGASMINI":
+                if not rsi_slope_ok:
+                    reasons.append("RSI slope not favorable")
+                if rsi_val <= rsi_min_bull and rsi_val >= rsi_max_bear:
+                    # If RSI is between thresholds, it's not showing momentum
+                    reasons.append(f"RSI not in momentum range ({rsi_val:.1f})")
+            else:
+                if rsi_val <= rsi_min_bull and rsi_val >= rsi_max_bear:
+                    reasons.append(f"RSI not in momentum range ({rsi_val:.1f})")
+
+            # Breakout conditions
+            if not (price > upper_breakout or price < lower_breakout):
+                reasons.append(
+                    f"No breakout ({price:.2f} not outside [{lower_breakout:.2f}, {upper_breakout:.2f}])"
+                )
+
+            if reasons:
+                self.logger.info(f"SKIP [{self.instrument}]: {', '.join(reasons)}")
 
             return None
 
@@ -751,7 +858,10 @@ class FinniftySpecificStrategy(Strategy):
             df_15["vol_avg"] = df_15["volume"].rolling(window=vol_window).mean()
 
             trend = df_60.iloc[-2]
-            trigger = df_15.iloc[-2]
+            # Use last 15m bar if it's recent (near real-time), otherwise use previous closed bar
+            time_diff = datetime.now() - df_15.index.max().to_pydatetime()
+            trigger_idx = -1 if time_diff.total_seconds() < 90 else -2
+            trigger = df_15.iloc[trigger_idx]
 
             price = trigger["close"]
             vwap_val = trigger.get("VWAP_D", 0)

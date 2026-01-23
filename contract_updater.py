@@ -108,7 +108,10 @@ def load_scrip_master(csv_path: str = SCRIP_MASTER_CSV) -> List[Dict]:
 
 
 def find_current_month_future(
-    underlying: str, exchange: str, contracts: List[Dict]
+    underlying: str,
+    exchange: str,
+    contracts: List[Dict],
+    option_offset_days: int = 0,
 ) -> Optional[Dict]:
     """
     Find the current month's futures contract for an underlying.
@@ -173,9 +176,12 @@ def find_current_month_future(
             else:
                 continue
 
-            # Only consider contracts expiring in the future (with rollover buffer)
+            # Only consider contracts expiring in the future.
+            # NOTE: `days_to_expiry` is the number of days until expiry.
+            # We include contracts that expire at least today+0 (future) and
+            # let higher-level logic decide when to roll to the next month.
             days_to_expiry = (expiry_date - today).days
-            if days_to_expiry >= 2:  # Roll over if expiry is within 2 days
+            if days_to_expiry >= 0:
                 contract["_expiry_date"] = expiry_date
                 matching.append(contract)
 
@@ -189,7 +195,28 @@ def find_current_month_future(
     # Sort by expiry date (nearest first)
     matching.sort(key=lambda x: x["_expiry_date"])
 
-    # Return the nearest expiry (current month or next available)
+    # If an option offset is provided (e.g., MCX options expire earlier), prefer
+    # futures whose option expiry (future_expiry - option_offset_days) is still
+    # in the future. This avoids selecting a future in the current month whose
+    # options already expired.
+    if option_offset_days and option_offset_days > 0:
+        today = datetime.now().date()
+        valid = []
+        for c in matching:
+            try:
+                if c.get("_expiry_date") is not None:
+                    opt_expiry = c.get("_expiry_date") - timedelta(
+                        days=option_offset_days
+                    )
+                    if opt_expiry >= today:
+                        valid.append(c)
+            except Exception:
+                continue
+
+        if valid:
+            return valid[0]
+
+    # Fallback: return the nearest expiry (current month or next available)
     return matching[0]
 
 
@@ -293,8 +320,20 @@ def get_updated_instrument_config(
     # Determine exchange
     exchange = current_config.get("exchange_segment_str", "MCX")
 
-    # Find current month future
-    future_contract = find_current_month_future(instrument_key, exchange, contracts)
+    # Determine option offset (MCX options typically expire earlier)
+    try:
+        exchange_norm = str(exchange).upper()
+        if "MCX" in exchange_norm:
+            option_offset_days = 5
+        else:
+            option_offset_days = 0
+    except Exception:
+        option_offset_days = 0
+
+    # Find current month future, preferring a future whose options haven't expired
+    future_contract = find_current_month_future(
+        instrument_key, exchange, contracts, option_offset_days=option_offset_days
+    )
 
     if not future_contract:
         logging.warning(f"Could not find current month future for {instrument_key}")
@@ -319,6 +358,20 @@ def get_updated_instrument_config(
     updated_config = current_config.copy()
     updated_config["future_id"] = security_id
     updated_config["expiry_date"] = expiry_date.strftime("%Y-%m-%d")
+    # Determine option expiry date (options often expire a few days before futures)
+    # Default: no offset (option expiry == future expiry). For MCX instruments use a 5-day offset.
+    try:
+        exchange_norm = str(exchange).upper()
+        if "MCX" in exchange_norm:
+            option_offset_days = 5
+        else:
+            option_offset_days = 0
+
+        option_expiry = expiry_date - timedelta(days=option_offset_days)
+        updated_config["option_expiry_date"] = option_expiry.strftime("%Y-%m-%d")
+    except Exception:
+        # Fallback: set option_expiry_date same as expiry_date
+        updated_config["option_expiry_date"] = expiry_date.strftime("%Y-%m-%d")
     updated_config["lot_size"] = lot_size
 
     logging.info(
@@ -430,19 +483,53 @@ def auto_update_instruments_on_startup(instruments: Dict[str, Dict]) -> Dict[str
     # Try cache first
     cached = load_contract_cache()
     if cached:
-        # Merge cached data with base config
-        for key in instruments:
-            if key in cached:
-                instruments[key]["future_id"] = cached[key].get(
-                    "future_id", instruments[key]["future_id"]
-                )
-                instruments[key]["expiry_date"] = cached[key].get(
-                    "expiry_date", instruments[key]["expiry_date"]
-                )
-                instruments[key]["lot_size"] = cached[key].get(
-                    "lot_size", instruments[key]["lot_size"]
-                )
-        return instruments
+        # If any cached contract is within 2 days of expiry, force a refresh
+        try:
+            from datetime import datetime
+
+            today = datetime.now().date()
+            force_refresh = False
+            for key, val in cached.items():
+                expiry = val.get("expiry_date")
+                if not expiry:
+                    continue
+                try:
+                    exp_date = datetime.fromisoformat(str(expiry)).date()
+                except Exception:
+                    # try yyyy-mm-dd fallback
+                    try:
+                        exp_date = datetime.strptime(str(expiry), "%Y-%m-%d").date()
+                    except Exception:
+                        continue
+
+                days_to_expiry = (exp_date - today).days
+                # Force refresh only when expiry is upcoming within the next 2 days (0..2)
+                if 0 <= days_to_expiry <= 2:
+                    logging.info(
+                        f"🔁 Cached contract for {key} expires in {days_to_expiry} day(s); forcing refresh"
+                    )
+                    force_refresh = True
+                    break
+
+            if not force_refresh:
+                # Merge cached data with base config
+                for key in instruments:
+                    if key in cached:
+                        instruments[key]["future_id"] = cached[key].get(
+                            "future_id", instruments[key]["future_id"]
+                        )
+                        instruments[key]["expiry_date"] = cached[key].get(
+                            "expiry_date", instruments[key]["expiry_date"]
+                        )
+                        instruments[key]["lot_size"] = cached[key].get(
+                            "lot_size", instruments[key]["lot_size"]
+                        )
+                return instruments
+        except Exception:
+            # If anything goes wrong deciding about cache staleness, fall through and refresh
+            logging.warning(
+                "⚠️ Error while evaluating contract cache expiry - refreshing scrip master"
+            )
 
     # Update from scrip master
     updated = update_all_instruments(instruments)

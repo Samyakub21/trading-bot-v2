@@ -95,12 +95,12 @@ def _process_candle_data(raw_data: List[Dict]) -> Tuple[pd.DataFrame, pd.DataFra
             "l": "low",
             "c": "close",
             "v": "volume",
-            "start_time": "time",
+            "start_time": "timestamp",
         },
         inplace=True,
     )
-    df["time"] = pd.to_datetime(df["time"])
-    df.set_index("time", inplace=True)
+    df["timestamp"] = pd.to_datetime(df["timestamp"])
+    df.set_index("timestamp", inplace=True)
 
     df_15 = (
         df.resample("15min")

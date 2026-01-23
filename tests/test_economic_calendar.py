@@ -133,19 +133,17 @@ class TestEconomicCalendar:
         assert high_event.is_high_impact() == True
         assert medium_event.is_high_impact() == False
 
-    @patch("economic_calendar.EconomicCalendar.get_active_events")
-    def test_should_pause_trading(self, mock_get_active):
+    def test_should_pause_trading(self):
         """Test trading pause logic."""
-        # Mock active events
+        # Mock event
         mock_event = MagicMock()
         mock_event.timestamp = datetime.now() + timedelta(minutes=5)
         mock_event.name = "Crude Oil Inventories"
-        mock_get_active.return_value = [mock_event]
 
         with patch("economic_calendar.get_calendar") as mock_get_cal:
             mock_calendar = MagicMock()
             mock_get_cal.return_value = mock_calendar
-            mock_calendar.get_active_events.return_value = [mock_event]
+            mock_calendar.should_pause_trading.return_value = (True, mock_event)
 
             pause, reason = should_pause_trading("CRUDEOIL")
 
