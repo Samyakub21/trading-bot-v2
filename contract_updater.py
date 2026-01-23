@@ -204,9 +204,10 @@ def find_current_month_future(
         valid = []
         for c in matching:
             try:
-                opt_expiry = c.get("_expiry_date") - timedelta(days=option_offset_days)
-                if opt_expiry >= today:
-                    valid.append(c)
+                if c.get("_expiry_date") is not None:
+                    opt_expiry = c.get("_expiry_date") - timedelta(days=option_offset_days)
+                    if opt_expiry >= today:
+                        valid.append(c)
             except Exception:
                 continue
 

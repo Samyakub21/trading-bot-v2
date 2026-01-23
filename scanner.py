@@ -159,15 +159,7 @@ def start_ltp_heartbeat(interval_seconds: int = 60) -> None:
 # Heartbeat will be started lazily when scanning begins.
 
 
-def update_last_signal(signal: str, instrument: Optional[str] = None) -> None:
-    _signal_tracker.update_signal(signal, instrument=instrument)
 
-
-def set_last_loss_time() -> None:
-    _signal_tracker.record_loss()
-
-
-def get_last_loss_time() -> Optional[datetime]:
     return _signal_tracker.last_loss_time
 
 
@@ -743,17 +735,7 @@ def check_margin_available(
 # (Keeping verify_order, execute_trade_entry, run_scanner as is, but fixing run_scanner typing)
 
 
-def run_scanner(active_trade: Dict[str, Any], active_instrument: str) -> None:
-    # Fix the range type error in logging
-    # ...
-    # Check 0: Economic calendar
-    if ECONOMIC_CALENDAR_AVAILABLE and _economic_calendar:
-        should_pause, pause_event = _economic_calendar.should_pause_trading()
-        if should_pause and pause_event:  # Check pause_event is not None
-            logger.info(f"Paused for {pause_event.name}")
 
-    # ... rest of logic
-    # Ensure all dict lookups use str keys
 
 
 # =============================================================================
@@ -1404,11 +1386,11 @@ def scan_all_instruments() -> List[Dict[str, Any]]:
                 banknifty_config = INSTRUMENTS.get("BANKNIFTY", {})
                 if banknifty_config:
                     banknifty_df_15, banknifty_df_60 = get_instrument_data(
-                        future_id=banknifty_config.get("future_id"),
-                        exchange_segment_str=banknifty_config.get(
-                            "exchange_segment_str"
-                        ),
-                        instrument_type=banknifty_config.get("instrument_type"),
+                        future_id=str(banknifty_config.get("future_id", "")),
+                        exchange_segment_str=str(banknifty_config.get(
+                            "exchange_segment_str", ""
+                        )),
+                        instrument_type=str(banknifty_config.get("instrument_type", "")),
                     )
                     if banknifty_df_60 is not None:
                         kwargs["banknifty_df_60"] = banknifty_df_60
@@ -1621,58 +1603,7 @@ def get_atm_option(
         return None
 
 
-def check_margin_available(
-    option_id: str, exchange_segment_str: str, lot_size: int
-) -> Tuple[bool, str]:
-    try:
-        funds = dhan_get_fund_limits(dhan)
-        if funds.get("status") == "failure":
-            return False, "Could not fetch fund limits"
 
-        fund_data = funds.get("data", {})
-        available_balance = float(
-            fund_data.get("availableBalance", 0)
-            or fund_data.get("availabelBalance", 0)
-            or 0
-        )
-
-        # Casting option_id to int for quote_data if possible
-        try:
-            quote_id = int(option_id)
-            quote_segment = exchange_segment_str.replace("_COMM", "")
-            if quote_segment == "MCX":
-                quote_segment = "MCX_COMM"
-
-            quote_response = dhan_quote_data(dhan, {quote_segment: [quote_id]})
-            if quote_response.get("status") == "success":
-                quote_data = quote_response.get("data", {}).get("data", {})
-                option_quote = quote_data.get(str(option_id)) or quote_data.get(
-                    quote_id, {}
-                )
-                option_ltp = float(
-                    option_quote.get("last_price", 0) or option_quote.get("LTP", 0) or 0
-                )
-
-                if option_ltp > 0:
-                    required = option_ltp * lot_size * 1.05
-                    logger.info(
-                        f"MARGIN [UNKNOWN]: Required ₹{required:.0f} | Available ₹{available_balance:.0f} | Status: {'OK' if available_balance >= required else 'INSUFFICIENT'}"
-                    )
-                    if available_balance >= required:
-                        return True, f"Margin OK: {available_balance}"
-                    required = option_ltp * lot_size * 1.05
-                    if available_balance >= required:
-                        return True, f"Margin OK: {available_balance}"
-                    else:
-                        return False, f"Insufficient: {available_balance} < {required}"
-        except Exception:
-            pass
-
-        # Fallback logic
-        return True, "Margin check skipped (fallback)"
-    except Exception as e:
-        return True, f"Margin check error: {e}"
-        return True, f"Margin check error: {e}"
 
 
 # =============================================================================

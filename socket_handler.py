@@ -9,7 +9,7 @@ import asyncio
 import json
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, cast
+from typing import Any, Dict, List, Optional, Tuple, cast, Union
 from dhanhq import marketfeed
 
 from instruments import INSTRUMENTS, MULTI_SCAN_ENABLED, get_instruments_to_scan
@@ -29,7 +29,7 @@ LATEST_LTP = 0.0
 OPTION_LTP = 0.0
 LAST_TICK_TIME = datetime.now()
 LAST_OPTION_TICK_TIME = datetime.now()
-INSTRUMENT_LTP = {}
+INSTRUMENT_LTP: Dict[str, Dict[str, Union[float, datetime, None]]] = {}
 # Initialize the LTP map with all known instruments to ensure heartbeat shows entries
 for _k in INSTRUMENTS.keys():
     INSTRUMENT_LTP[_k] = {"ltp": None, "last_update": None}
