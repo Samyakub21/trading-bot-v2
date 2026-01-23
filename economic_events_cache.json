@@ -685,6 +685,33 @@
       "previous": "3.8%"
     },
     {
+      "name": "Core PCE Price Index m/m",
+      "timestamp": "2026-01-22T09:59:00",
+      "impact": "medium",
+      "country": "USD",
+      "actual": null,
+      "forecast": "",
+      "previous": "0.2%"
+    },
+    {
+      "name": "Personal Income m/m",
+      "timestamp": "2026-01-22T09:59:00",
+      "impact": "low",
+      "country": "USD",
+      "actual": null,
+      "forecast": "",
+      "previous": "0.4%"
+    },
+    {
+      "name": "Personal Spending m/m",
+      "timestamp": "2026-01-22T09:59:00",
+      "impact": "low",
+      "country": "USD",
+      "actual": null,
+      "forecast": "",
+      "previous": "0.3%"
+    },
+    {
       "name": "Consumer Confidence",
       "timestamp": "2026-01-22T10:00:00",
       "impact": "low",
@@ -700,7 +727,7 @@
       "country": "USD",
       "actual": null,
       "forecast": "0.2%",
-      "previous": ""
+      "previous": "0.2%"
     },
     {
       "name": "Personal Income m/m",
@@ -709,7 +736,7 @@
       "country": "USD",
       "actual": null,
       "forecast": "0.4%",
-      "previous": ""
+      "previous": "0.1%"
     },
     {
       "name": "Personal Spending m/m",
@@ -718,34 +745,7 @@
       "country": "USD",
       "actual": null,
       "forecast": "0.5%",
-      "previous": ""
-    },
-    {
-      "name": "Core PCE Price Index m/m",
-      "timestamp": "2026-01-22T10:10:00",
-      "impact": "medium",
-      "country": "USD",
-      "actual": null,
-      "forecast": "",
-      "previous": "0.2%"
-    },
-    {
-      "name": "Personal Income m/m",
-      "timestamp": "2026-01-22T10:10:00",
-      "impact": "low",
-      "country": "USD",
-      "actual": null,
-      "forecast": "",
-      "previous": "0.4%"
-    },
-    {
-      "name": "Personal Spending m/m",
-      "timestamp": "2026-01-22T10:10:00",
-      "impact": "low",
-      "country": "USD",
-      "actual": null,
-      "forecast": "",
-      "previous": "0.3%"
+      "previous": "0.5%"
     },
     {
       "name": "Natural Gas Storage",
@@ -820,8 +820,17 @@
       "previous": "49.7"
     },
     {
+      "name": "BOJ Outlook Report",
+      "timestamp": "2026-01-22T22:07:00",
+      "impact": "high",
+      "country": "JPY",
+      "actual": null,
+      "forecast": "",
+      "previous": ""
+    },
+    {
       "name": "BOJ Policy Rate",
-      "timestamp": "2026-01-22T22:30:00",
+      "timestamp": "2026-01-22T22:07:00",
       "impact": "high",
       "country": "JPY",
       "actual": null,
@@ -830,16 +839,7 @@
     },
     {
       "name": "Monetary Policy Statement",
-      "timestamp": "2026-01-22T22:30:00",
-      "impact": "high",
-      "country": "JPY",
-      "actual": null,
-      "forecast": "",
-      "previous": ""
-    },
-    {
-      "name": "BOJ Outlook Report",
-      "timestamp": "2026-01-22T22:31:00",
+      "timestamp": "2026-01-22T22:07:00",
       "impact": "high",
       "country": "JPY",
       "actual": null,
@@ -865,21 +865,12 @@
       "previous": "-0.1%"
     },
     {
-      "name": "Foreign Direct Investment ytd/y",
-      "timestamp": "2026-01-23T02:02:00",
-      "impact": "low",
-      "country": "CNY",
-      "actual": null,
-      "forecast": "",
-      "previous": "-7.5%"
-    },
-    {
       "name": "French Flash Manufacturing PMI",
       "timestamp": "2026-01-23T03:15:00",
       "impact": "medium",
       "country": "EUR",
       "actual": null,
-      "forecast": "50.3",
+      "forecast": "50.4",
       "previous": "50.6"
     },
     {
@@ -906,7 +897,7 @@
       "impact": "high",
       "country": "EUR",
       "actual": null,
-      "forecast": "52.7",
+      "forecast": "52.6",
       "previous": "52.6"
     },
     {
@@ -1032,9 +1023,9 @@
       "impact": "low",
       "country": "USD",
       "actual": null,
-      "forecast": "",
-      "previous": ""
+      "forecast": "-0.2%",
+      "previous": "-0.3%"
     }
   ],
-  "last_update": "2026-01-22T20:36:08.967060"
+  "last_update": "2026-01-23T18:50:05.001737"
 }

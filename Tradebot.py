@@ -297,7 +297,7 @@ class TradingBot:
 
         # Wait for threads to finish
         logging.info("Waiting for threads to finish...")
-        time.sleep(3)
+        time.sleep(5)
 
         # Stop heartbeat
         if HEARTBEAT_AVAILABLE:
@@ -322,6 +322,9 @@ class TradingBot:
         logging.info("=" * 60)
         logging.info("🛑 TRADING BOT STOPPED")
         logging.info("=" * 60)
+
+        # Shutdown logging to prevent errors on exit
+        logging.shutdown()
 
     def log_startup_info(self) -> None:
         """Log startup information including configuration and market status"""
@@ -520,13 +523,17 @@ class TradingBot:
         self.threads.append(socket_thread)
 
         logging.info("Waiting for market data feed...")
-        for _ in range(15):  # Wait up to 15 seconds
-            if socket_handler.get_latest_ltp() > 0:
-                logging.info("✅ Market data received")
-                break
-            time.sleep(1)
-        else:
-            logging.warning("⚠️ Starting scanner without live data (LTP is 0)")
+        try:
+            for _ in range(15):  # Wait up to 15 seconds
+                if socket_handler.get_latest_ltp() > 0:
+                    logging.info("✅ Market data received")
+                    break
+                time.sleep(1)
+            else:
+                logging.warning("⚠️ Starting scanner without live data (LTP is 0)")
+        except KeyboardInterrupt:
+            self.graceful_shutdown("User interrupted (Ctrl+C) during startup")
+            return
 
         # Start scanner thread
         scanner_thread = self._start_scanner_thread()

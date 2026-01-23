@@ -11,10 +11,10 @@ INSTRUMENTS = {
         "name": "CRUDE OIL",
         "exchange_segment_int": 5,  # marketfeed.MCX_COMM (V2)
         "exchange_segment_str": "MCX_COMM",  # V2 API: MCX_COMM for commodities
-        "future_id": "464926",  # <--- UPDATE for current month future
+        "future_id": "467013",  # <--- UPDATE for current month future
         "lot_size": 10,
         "strike_step": 50,
-        "expiry_date": "2026-01-16",
+        "expiry_date": "2026-02-19",
         "instrument_type": "FUTCOM",  # V2 API: FUTCOM for commodity futures
         "option_type": "OPTFUT",
         "market_start": "09:00",  # MCX Crude trading hours
@@ -57,10 +57,10 @@ INSTRUMENTS = {
         "name": "NATURAL GAS MINI",
         "exchange_segment_int": 5,  # marketfeed.MCX_COMM (V2)
         "exchange_segment_str": "MCX_COMM",  # V2 API: MCX_COMM for commodities
-        "future_id": "465124",  # <--- UPDATE with actual active Mini ID from Dhan dashboard
+        "future_id": "467386",  # <--- UPDATE with actual active Mini ID from Dhan dashboard
         "lot_size": 250,
         "strike_step": 5,
-        "expiry_date": "2026-01-27",
+        "expiry_date": "2026-02-24",
         "instrument_type": "FUTCOM",  # V2 API: FUTCOM for commodity futures
         "option_type": "OPTFUT",
         "market_start": "09:00",

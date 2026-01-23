@@ -67,76 +67,96 @@ from state_stores import get_signal_tracker
 # Create named logger for scanner
 logger = logging.getLogger("Scanner")
 
+
+def _safe_format(val: Any, precision: int = 2) -> str:
+    try:
+        if val is None:
+            return "N/A"
+        return f"{float(val):.{precision}f}"
+    except Exception:
+        return "N/A"
+
+
 _DATA_CACHE: Dict[str, Dict[str, Any]] = {}
+# Last tick time for relaxed logging
+LAST_TICK_TIME: Dict[str, datetime] = {}
 _LAST_INSTRUMENT_STATES: Dict[str, Dict[str, bool]] = {}
+LTP_HEARTBEAT_STARTED = False
 
 
-def update_live_candle(instrument_key: str, ltp: float):
-    """Updates the internal cache with the live price from WebSocket"""
-    if instrument_key in _DATA_CACHE:
-        cache_data = _DATA_CACHE[instrument_key]
-        df = cache_data["df"]
-        now = datetime.now().replace(second=0, microsecond=0)
+def start_ltp_heartbeat(interval_seconds: int = 60) -> None:
+    """Start a background daemon thread that logs a concise LTP summary every minute.
 
-        # If the current minute already exists, update its 'close' and 'high/low'
-        if now in df.index:
-            df.at[now, "close"] = ltp
-            df.at[now, "high"] = max(df.at[now, "high"], ltp)
-            df.at[now, "low"] = min(df.at[now, "low"], ltp)
-        else:
-            # Create a new minute candle based on the last known price
-            new_row = pd.DataFrame(
-                {"open": ltp, "high": ltp, "low": ltp, "close": ltp, "volume": 0},
-                index=[now],
-            )
-            df = pd.concat([df, new_row])
-            # Keep rolling history
-            df = df[df.index >= (datetime.now() - timedelta(days=30))]
-            cache_data["df"] = df
+    Logs a single line like: "LTP HEARTBEAT: CRUDEOIL=5276.00@2025-12-24 09:02:00, NATGASMINI=297.60@..."
+    Uses `socket_handler.INSTRUMENT_LTP` protected by `socket_handler.LTP_LOCK`.
+    """
+    global LTP_HEARTBEAT_STARTED
+    if LTP_HEARTBEAT_STARTED:
+        return
 
-        # Update last timestamp
-        cache_data["last_timestamp"] = now
+    def _heartbeat() -> None:
+        while True:
+            try:
+                with socket_handler.LTP_LOCK:
+                    ltp_map = getattr(socket_handler, "INSTRUMENT_LTP", {}) or {}
+                    parts: List[str] = []
+                    for inst in INSTRUMENTS.keys():
+                        try:
+                            entry = ltp_map.get(inst)
+                            if not entry:
+                                parts.append(f"{inst}=n/a")
+                                continue
+
+                            ltp_val = entry.get("ltp")
+                            last_update = entry.get("last_update")
+
+                            # Safe timestamp formatting
+                            try:
+                                ts = (
+                                    last_update.strftime("%Y-%m-%d %H:%M:%S")
+                                    if isinstance(last_update, datetime)
+                                    else str(last_update)
+                                )
+                            except Exception:
+                                ts = str(last_update)
+
+                            # Try to coerce LTP to float for consistent formatting
+                            formatted = None
+                            try:
+                                if ltp_val is None:
+                                    formatted = f"{inst}=n/a@{ts}"
+                                else:
+                                    ltp_float = float(ltp_val)
+                                    formatted = f"{inst}={ltp_float:.2f}@{ts}"
+                            except Exception:
+                                # Fallback to string representation if numeric cast fails
+                                formatted = f"{inst}={ltp_val}@{ts}"
+
+                            parts.append(formatted)
+                        except Exception:
+                            # Ensure one bad instrument doesn't kill the heartbeat
+                            try:
+                                parts.append(f"{inst}=error")
+                            except Exception:
+                                # last resort: skip
+                                pass
+                heartbeat_msg = (
+                    "LTP HEARTBEAT: " + ", ".join(parts)
+                    if parts
+                    else "LTP HEARTBEAT: no LTP data"
+                )
+                logger.info(heartbeat_msg)
+            except Exception:
+                logger.exception("LTP heartbeat error")
+            time.sleep(interval_seconds)
+
+    thread = threading.Thread(target=_heartbeat, name="LTP-Heartbeat", daemon=True)
+    thread.start()
+    LTP_HEARTBEAT_STARTED = True
 
 
-# =============================================================================
-# STRATEGY PATTERN SUPPORT
-# STRATEGY PATTERN SUPPORT
-# =============================================================================
-USE_STRATEGY_PATTERN = True
-
-try:
-    from strategies import get_strategy, get_available_strategies
-
-    STRATEGIES_AVAILABLE = True
-except ImportError:
-    STRATEGIES_AVAILABLE = False
-    USE_STRATEGY_PATTERN = False
-    logger.warning("strategies.py not found. Using legacy signal analysis.")
-
-# =============================================================================
-# ECONOMIC CALENDAR INTEGRATION
-# =============================================================================
-# Explicitly type the calendar variable
-try:
-    from economic_calendar import EconomicCalendar
-
-    _economic_calendar: Optional[EconomicCalendar] = EconomicCalendar()
-    ECONOMIC_CALENDAR_AVAILABLE = True
-except ImportError:
-    _economic_calendar = None
-    ECONOMIC_CALENDAR_AVAILABLE = False
-    logger.info("economic_calendar.py not found. News filtering disabled.")
-
-# =============================================================================
-# DHAN CLIENT
-# =============================================================================
-CLIENT_ID = config.CLIENT_ID
-ACCESS_TOKEN = config.ACCESS_TOKEN
-dhan: dhanhq = dhanhq(CLIENT_ID, ACCESS_TOKEN)
-
-trade_lock: threading.Lock = threading.Lock()
-instrument_lock: threading.Lock = threading.Lock()
-_signal_tracker: Any = get_signal_tracker()
+# Do not start heartbeat at import time to avoid circular import with `socket_handler`.
+# Heartbeat will be started lazily when scanning begins.
 
 
 def update_last_signal(signal: str, instrument: Optional[str] = None) -> None:
@@ -161,9 +181,13 @@ def get_instrument_data(
     try:
         if instrument_key is not None:
             inst = INSTRUMENTS[instrument_key]
-            future_id = inst["future_id"]
-            exchange_segment_str = inst["exchange_segment_str"]
-            instrument_type = inst["instrument_type"]
+            future_id = inst.get("future_id", "")  # Ensure future_id is fetched
+            exchange_segment_str = inst.get(
+                "exchange_segment_str", ""
+            )  # Ensure exchange_segment_str is fetched
+            instrument_type = inst.get(
+                "instrument_type", "FUTCOM"
+            )  # Ensure instrument_type is fetched
             log_context = instrument_key
             cache_key = instrument_key
         else:
@@ -171,6 +195,86 @@ def get_instrument_data(
                 return None, None
             log_context = f"future_id={future_id}"
             cache_key = str(future_id)
+
+        # Check if we have fresh cached data from live updates
+        if cache_key in _DATA_CACHE:
+            entry = _DATA_CACHE[cache_key]
+            # Support legacy format where cache stored a DataFrame directly
+            if isinstance(entry, dict) and "last_timestamp" in entry and "df" in entry:
+                cached_data = entry
+            elif isinstance(entry, pd.DataFrame):
+                cached_data = {"df": entry, "last_timestamp": entry.index.max()}
+                # Normalize cache in-place for future reads
+                _DATA_CACHE[cache_key] = cached_data
+            else:
+                # Unknown cache format - drop it
+                try:
+                    del _DATA_CACHE[cache_key]
+                except Exception:
+                    pass
+                cached_data = None
+
+            if cached_data is not None:
+                time_since_update = (
+                    datetime.now() - cached_data["last_timestamp"]
+                ).total_seconds()
+                if (
+                    cached_data["last_timestamp"].date() == datetime.now().date()
+                    and time_since_update < 3600
+                ):  # Cache is from today and updated within 1 hour
+                    df = cached_data["df"].copy()
+
+                    # Append latest tick from websocket buffer if available
+                    import socket_handler
+
+                    with socket_handler.LTP_LOCK:
+                        latest_ltp_data = socket_handler.INSTRUMENT_LTP.get(
+                            instrument_key if instrument_key else cache_key
+                        )
+                    if latest_ltp_data and latest_ltp_data.get("ltp", 0) > 0:
+                        ltp = latest_ltp_data["ltp"]
+                        last_update = latest_ltp_data["last_update"]
+
+                        # Only append if the update is newer than the last cached data
+                        if last_update > cached_data["last_timestamp"]:
+                            now = last_update.replace(second=0, microsecond=0)
+
+                            # Ensure index is DatetimeIndex
+                            if not isinstance(df.index, pd.DatetimeIndex):
+                                df.index = pd.to_datetime(df.index, errors="coerce")
+                                df = df[~df.index.isna()]
+                                if df.empty or not isinstance(
+                                    df.index, pd.DatetimeIndex
+                                ):
+                                    logger.warning(
+                                        f"Skipping live tick append for {log_context} - invalid cached index"
+                                    )
+                                else:
+                                    if now in df.index:
+                                        df.at[now, "close"] = ltp
+                                        df.at[now, "high"] = max(
+                                            df.at[now, "high"], ltp
+                                        )
+                                        df.at[now, "low"] = min(df.at[now, "low"], ltp)
+                                    else:
+                                        # Create a new minute candle
+                                        new_row = pd.DataFrame(
+                                            {
+                                                "open": ltp,
+                                                "high": ltp,
+                                                "low": ltp,
+                                                "close": ltp,
+                                                "volume": 0,
+                                            },
+                                            index=[now],
+                                        )
+                                        df = pd.concat([df, new_row])
+                                        df.sort_index(inplace=True)
+
+                    logger.info(
+                        f"Using cached data with live tick for {log_context} (updated {time_since_update:.0f}s ago)"
+                    )
+                    return df, df
 
         to_date = datetime.now().strftime("%Y-%m-%d")
 
@@ -211,6 +315,9 @@ def get_instrument_data(
             return None, None
 
         raw_data = data.get("data", data)
+        print(
+            f"DEBUG: Raw data type: {type(raw_data)}, has 'open' key: {'open' in raw_data if isinstance(raw_data, dict) else 'N/A'}"
+        )
 
         if isinstance(raw_data, dict) and "open" in raw_data:
             df = pd.DataFrame(
@@ -225,7 +332,32 @@ def get_instrument_data(
                     ),
                 }
             )
-            df["time"] = pd.to_datetime(df["timestamp"], unit="s")
+            # Robust timestamp parsing: handle epoch seconds or mixed formats.
+            # Prefer epoch-seconds when numeric, else fallback to parsing strings.
+            try:
+                if pd.api.types.is_numeric_dtype(df["timestamp"]):
+                    s = pd.to_datetime(
+                        df["timestamp"], unit="s", errors="coerce", utc=True
+                    )
+                else:
+                    # Try numeric conversion first (some APIs return numbers as strings)
+                    numeric_ts = pd.to_numeric(df["timestamp"], errors="coerce")
+                    if numeric_ts.notna().any():
+                        s = pd.to_datetime(
+                            numeric_ts, unit="s", errors="coerce", utc=True
+                        )
+                    else:
+                        s = pd.to_datetime(df["timestamp"], errors="coerce", utc=True)
+                # Convert to local timezone and make naive datetime (drop tz info)
+                s_local_str = s.dt.tz_convert("Asia/Kolkata").dt.strftime(
+                    "%Y-%m-%d %H:%M:%S"
+                )
+                df["timestamp"] = pd.to_datetime(s_local_str, errors="coerce")
+            except Exception:
+                # Fallback: best-effort parse without timezone conversion
+                df["timestamp"] = pd.to_datetime(
+                    df.get("timestamp", None), errors="coerce"
+                )
         elif isinstance(raw_data, list):
             df = pd.DataFrame(raw_data)
             df.rename(
@@ -235,18 +367,78 @@ def get_instrument_data(
                     "l": "low",
                     "c": "close",
                     "v": "volume",
-                    "start_time": "time",
+                    "start_time": "timestamp",
                 },
                 inplace=True,
             )
-            df["time"] = pd.to_datetime(df["time"])
+            # Robust parsing for legacy payloads: coerce mixed formats, convert to Asia/Kolkata
+            try:
+                s = pd.to_datetime(df["timestamp"], errors="coerce", utc=True)
+                s_local_str = s.dt.tz_convert("Asia/Kolkata").dt.strftime(
+                    "%Y-%m-%d %H:%M:%S"
+                )
+                df["timestamp"] = pd.to_datetime(s_local_str, errors="coerce")
+            except Exception:
+                df["timestamp"] = pd.to_datetime(
+                    df.get("timestamp", None), errors="coerce"
+                )
         else:
             return None, None
 
         if df.empty:
             return None, None
 
-        df.set_index("time", inplace=True)
+        # Ensure there is a time-like column available
+        if "timestamp" not in df.columns:
+            # common alternatives
+            for alt in ("timestamp", "start_Time", "start_time", "startTime"):
+                if alt in df.columns:
+                    df["timestamp"] = df[alt]
+                    break
+            else:
+                candidates = [c for c in df.columns if "time" in c.lower()]
+                if candidates:
+                    df["timestamp"] = df[candidates[0]]
+                else:
+                    logger.error(
+                        f"Data Error for {log_context}: no time-like column in payload: {list(df.columns)}"
+                    )
+                    return None, None
+
+        # Removed verbose diagnostic logs (columns/sample rows) per user request.
+        df.set_index("timestamp", inplace=True)
+        # Removed debug prints
+        # Ensure index is a valid DatetimeIndex and normalized
+        try:
+            # First, ensure we have a DatetimeIndex
+            if not isinstance(df.index, pd.DatetimeIndex):
+                df.index = pd.to_datetime(df.index, errors="coerce")
+
+            # Remove rows with invalid timestamps
+            df = df[~df.index.isna()]
+
+            if df.empty:
+                logger.error(
+                    f"Data Error for {log_context}: All timestamps are invalid"
+                )
+                return None, None
+
+            if not isinstance(df.index, pd.DatetimeIndex):
+                logger.error(
+                    f"Data Error for {log_context}: Data type/value error - index is not a valid DatetimeIndex. Index type: {type(df.index)}, dtype: {df.index.dtype}, shape: {df.shape}"
+                )
+                return None, None
+
+            # Normalize timezone to local (remove tz info if present)
+            df.index = (
+                df.index.tz_localize(None)
+                if hasattr(df.index, "tz") and df.index.tz is not None
+                else df.index
+            )
+            df.sort_index(inplace=True)
+        except Exception as e:
+            logger.error(f"Data Error for {log_context}: Data type/value error - {e}")
+            return None, None
 
         # Stale data detection - check if latest tick is older than 5 minutes
         latest_timestamp = df.index.max()
@@ -258,12 +450,27 @@ def get_instrument_data(
             return None, None
 
         if cache_key in _DATA_CACHE:
-            cached_df = _DATA_CACHE[cache_key]
-            df = pd.concat([cached_df, df])
+            # Support both legacy (DataFrame) and normalized (dict) cache entries
+            cached_entry = _DATA_CACHE[cache_key]
+            if isinstance(cached_entry, dict) and "df" in cached_entry:
+                cached_df = cached_entry["df"]
+            elif isinstance(cached_entry, pd.DataFrame):
+                cached_df = cached_entry
+                # Normalize stored cache
+                _DATA_CACHE[cache_key] = {
+                    "df": cached_df,
+                    "last_timestamp": cached_df.index.max(),
+                }
+            else:
+                cached_df = None
+
+            if cached_df is not None:
+                df = pd.concat([cached_df, df])
             df = df[~df.index.duplicated(keep="last")]
             df = df[df.index >= (datetime.now() - timedelta(days=30))]
 
-        _DATA_CACHE[cache_key] = df
+        # Store cache as a dict with dataframe and last timestamp (consistent structure)
+        _DATA_CACHE[cache_key] = {"df": df, "last_timestamp": df.index.max()}
 
         df_15 = (
             df.resample("15min")
@@ -312,6 +519,13 @@ def get_resampled_data(
 def analyze_instrument_signal(
     instrument_key: str, df_15: pd.DataFrame, df_60: pd.DataFrame, **kwargs
 ) -> Optional[Dict[str, Any]]:
+    # Ensure DataFrames are prepared for time-series analysis
+    for df in [df_15, df_60]:
+        if "timestamp" in df.columns and not isinstance(df.index, pd.DatetimeIndex):
+            df["timestamp"] = pd.to_datetime(df["timestamp"])
+            df.set_index("timestamp", inplace=True)
+        df.sort_index(inplace=True)
+
     if USE_STRATEGY_PATTERN and STRATEGIES_AVAILABLE:
         try:
             inst_config = INSTRUMENTS.get(instrument_key, {})
@@ -473,7 +687,10 @@ def get_atm_option(
 
 
 def check_margin_available(
-    option_id: str, exchange_segment_str: str, lot_size: int
+    option_id: str,
+    exchange_segment_str: str,
+    lot_size: int,
+    instrument: Optional[str] = None,
 ) -> Tuple[bool, str]:
     try:
         funds = dhan_get_fund_limits(dhan)
@@ -506,8 +723,9 @@ def check_margin_available(
 
                 if option_ltp > 0:
                     required = option_ltp * lot_size * 1.05
+                    inst_label = instrument if instrument else "UNKNOWN"
                     logger.info(
-                        f"MARGIN [UNKNOWN]: Required ₹{required:.0f} | Available ₹{available_balance:.0f} | Status: {'OK' if available_balance >= required else 'INSUFFICIENT'}"
+                        f"MARGIN [{inst_label}]: Required ₹{required:.0f} | Available ₹{available_balance:.0f} | Status: {'OK' if available_balance >= required else 'INSUFFICIENT'}"
                     )
                     if available_balance >= required:
                         return True, f"Margin OK: {available_balance}"
@@ -537,6 +755,12 @@ def run_scanner(active_trade: Dict[str, Any], active_instrument: str) -> None:
     # ... rest of logic
     # Ensure all dict lookups use str keys
 
+
+# =============================================================================
+# STRATEGY PATTERN SUPPORT
+# STRATEGY PATTERN SUPPORT
+# =============================================================================
+USE_STRATEGY_PATTERN = True
 
 try:
     from strategies import get_strategy, get_available_strategies
@@ -642,19 +866,13 @@ def get_instrument_data(
         # Format: security_id, exchange_segment, instrument_type, from_date, to_date
         to_date = datetime.now().strftime("%Y-%m-%d")
 
-        # Smart Incremental Fetching Logic
-        if cache_key in _DATA_CACHE:
-            cached_data = _DATA_CACHE[cache_key]
-            cached_df = cached_data["df"]
-            last_ts = cached_data["last_timestamp"]
-            # Fetch from last timestamp onwards (add buffer to avoid gaps)
-            from_date = (last_ts - timedelta(days=1)).strftime("%Y-%m-%d")
-            to_date = datetime.now().strftime("%Y-%m-%d")
-        else:
-            # If not cached, fetch full history (30 days)
-            from_date = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
-            to_date = datetime.now().strftime("%Y-%m-%d")
-            cached_df = None
+        # Always fetch full history (30 days) for merging
+        from_date = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
+        cached_df = (
+            _DATA_CACHE.get(cache_key, {}).get("df")
+            if cache_key in _DATA_CACHE
+            else None
+        )
 
         # V2 API call for intraday minute data
         # Use robust wrapper from utils to get retries, backoff and consistent errors
@@ -757,6 +975,24 @@ def get_instrument_data(
             )
             # Convert epoch timestamp to datetime
             df["time"] = pd.to_datetime(df["timestamp"], unit="s")
+            # Manual timezone conversion to Asia/Kolkata
+            import pytz
+
+            utc_tz = pytz.UTC
+            ist_tz = pytz.timezone("Asia/Kolkata")
+
+            def convert_timestamp(ts):
+                if pd.isna(ts):
+                    return ts
+                # Convert to UTC first if naive
+                if ts.tzinfo is None:
+                    ts = utc_tz.localize(ts)
+                # Convert to IST
+                ts = ts.astimezone(ist_tz)
+                # Remove timezone info
+                return ts.replace(tzinfo=None)
+
+            df["time"] = df["time"].apply(convert_timestamp)
         elif isinstance(raw_data, list):
             # Legacy format: list of dictionaries
             df = pd.DataFrame(raw_data)
@@ -772,6 +1008,12 @@ def get_instrument_data(
                 inplace=True,
             )
             df["time"] = pd.to_datetime(df["time"])
+            df["time"] = (
+                df["time"]
+                .tz_localize("UTC")
+                .tz_convert("Asia/Kolkata")
+                .tz_localize(None)
+            )
         else:
             logger.error(f"Data Error for {log_context}: Unexpected data format")
             return None, None
@@ -780,19 +1022,24 @@ def get_instrument_data(
             logger.error(f"Data Error for {log_context}: Empty dataframe")
             return None, None
 
-        df.set_index("time", inplace=True)
+        if "time" not in df.columns:
+            for alt in ("timestamp", "start_Time", "start_time", "startTime"):
+                if alt in df.columns:
+                    df["time"] = df[alt]
+                    break
+            else:
+                candidates = [c for c in df.columns if "time" in c.lower()]
+                if candidates:
+                    df["time"] = df[candidates[0]]
+                else:
+                    logger.error(
+                        f"Data Error for {log_context}: no time-like column in merged payload: {list(df.columns)}"
+                    )
+                    return None, None
 
-        # Stale data detection with relaxed check for commodities
-        latest_timestamp = df.index.max()
-        time_diff = datetime.now() - latest_timestamp.to_pydatetime()
-        max_allowed_lag = (
-            1800 if exchange_segment_str == "MCX_COMM" else 300
-        )  # 30 mins for MCX, 5 mins for others
-        if time_diff.total_seconds() > max_allowed_lag:
-            logger.warning(
-                f"⚠️ Data truly stale for {log_context}: latest tick is {time_diff.total_seconds()/60:.1f} minutes old. Skipping analysis."
-            )
-            return None, None
+        # Removed merged payload diagnostic logs per user request.
+
+        df.set_index("time", inplace=True)
 
         # Data Merging and Caching
         new_candles = 0
@@ -809,8 +1056,69 @@ def get_instrument_data(
         # Keep rolling history of ~30 trading days
         df = df[df.index >= (datetime.now() - timedelta(days=30))]
 
-        # Update Cache with DataFrame and last timestamp
-        _DATA_CACHE[cache_key] = {"df": df, "last_timestamp": df.index.max()}
+        # Update latest candle with real-time LTP if available
+        if (
+            instrument_key
+            and hasattr(socket_handler, "INSTRUMENT_LTP")
+            and instrument_key in socket_handler.INSTRUMENT_LTP
+        ):
+            with socket_handler.LTP_LOCK:
+                latest_time = df.index.max()
+                current_minute = datetime.now().replace(second=0, microsecond=0)
+                if latest_time == current_minute:
+                    live_ltp = socket_handler.INSTRUMENT_LTP[instrument_key].get(
+                        "ltp", 0
+                    )
+                    if live_ltp > 0:
+                        df.loc[latest_time, "close"] = live_ltp
+                        logger.debug(
+                            f"Updated {instrument_key} latest candle close to live LTP: {live_ltp}"
+                        )
+
+        # Stale data detection with relaxed check for commodities (after merging)
+        latest_timestamp = df.index.max()
+        time_diff = datetime.now() - latest_timestamp.to_pydatetime()
+        # If data is not from today, consider it stale
+        if latest_timestamp.date() != datetime.now().date():
+            if (
+                instrument_key
+                and instrument_key in LAST_TICK_TIME
+                and (datetime.now() - LAST_TICK_TIME[instrument_key]).total_seconds()
+                < 60
+            ):
+                logger.debug(
+                    f"⚠️ Data from previous day for {log_context}: latest tick is {time_diff.total_seconds()/60:.1f} minutes old. Proceeding with live data."
+                )
+            else:
+                logger.warning(
+                    f"⚠️ Data from previous day for {log_context}: latest tick is {time_diff.total_seconds()/60:.1f} minutes old. Skipping analysis."
+                )
+                return None, None
+        max_allowed_lag = (
+            1800 if exchange_segment_str == "MCX_COMM" else 300
+        )  # 30 mins for MCX, 5 mins for others
+        if time_diff.total_seconds() > max_allowed_lag:
+            if (
+                instrument_key
+                and instrument_key in LAST_TICK_TIME
+                and (datetime.now() - LAST_TICK_TIME[instrument_key]).total_seconds()
+                < 60
+            ):
+                logger.debug(
+                    f"⚠️ Data truly stale for {log_context}: latest tick is {time_diff.total_seconds()/60:.1f} minutes old. Proceeding with live data."
+                )
+            else:
+                logger.warning(
+                    f"⚠️ Data truly stale for {log_context}: latest tick is {time_diff.total_seconds()/60:.1f} minutes old. Skipping analysis."
+                )
+                return None, None
+
+        # Update Cache with DataFrame and last timestamp (only if new data is fresher)
+        if (
+            cache_key not in _DATA_CACHE
+            or df.index.max() > _DATA_CACHE[cache_key]["last_timestamp"]
+        ):
+            _DATA_CACHE[cache_key] = {"df": df, "last_timestamp": df.index.max()}
 
         # Debug log for data freshness
         logger.debug(
@@ -818,7 +1126,7 @@ def get_instrument_data(
         )
 
         df_15 = (
-            df.resample("15min")
+            df.resample("15min", label="left", closed="left")
             .agg(
                 {
                     "open": "first",
@@ -831,7 +1139,7 @@ def get_instrument_data(
             .dropna()
         )
         df_60 = (
-            df.resample("60min")
+            df.resample("60min", label="left", closed="left")
             .agg(
                 {
                     "open": "first",
@@ -856,7 +1164,9 @@ def get_instrument_data(
         logger.error(f"Data Error for {log_context}: Network request failed - {e}")
         return None, None
     except (TypeError, ValueError) as e:
-        logger.error(f"Data Error for {log_context}: Data type/value error - {e}")
+        logger.error(
+            f"Data Error for {log_context}: Data type/value error - {e} (type: {type(e).__name__})"
+        )
         return None, None
     except Exception as e:
         logger.error(
@@ -1023,6 +1333,11 @@ def analyze_instrument_signal(
 
 def scan_all_instruments() -> List[Dict[str, Any]]:
     """Scan all configured instruments and return those in trade zone"""
+    # Ensure LTP heartbeat is running when scanning starts (deferred start to avoid circular import)
+    try:
+        start_ltp_heartbeat()
+    except Exception:
+        logger.exception("Failed to start LTP heartbeat")
     instruments_to_scan = get_instruments_to_scan()
 
     # Filter to only scan instruments that are currently in market hours
@@ -1108,8 +1423,16 @@ def scan_all_instruments() -> List[Dict[str, Any]]:
             signal_type = (
                 "📈 BULLISH" if signal_info["signal"] == "BUY" else "📉 BEARISH"
             )
+            # Use safe formatting to avoid exceptions when values are missing or non-numeric
+            price_s = _safe_format(signal_info.get("price"), 2)
+            rsi_s = _safe_format(signal_info.get("rsi"), 1)
+            adx_s = _safe_format(signal_info.get("adx"), 1)
+            vwap_s = _safe_format(signal_info.get("vwap"), 2)
+            atr_s = _safe_format(signal_info.get("atr"), 2)
+            strength_s = _safe_format(signal_info.get("signal_strength"), 1)
+
             logger.info(
-                f"SIGNAL [{inst_key}]: {signal_type} | Price: ₹{signal_info['price']:.2f} | RSI: {signal_info['rsi']:.1f} | ADX: {signal_info.get('adx', 'N/A'):.1f} | VWAP: {signal_info.get('vwap', 'N/A'):.2f} | ATR: {signal_info.get('atr', 'N/A'):.2f} | Strength: {signal_info['signal_strength']:.1f}"
+                f"SIGNAL [{inst_key}]: {signal_type} | Price: ₹{price_s} | RSI: {rsi_s} | ADX: {adx_s} | VWAP: {vwap_s} | ATR: {atr_s} | Strength: {strength_s}"
             )
         else:
             logger.debug(f"SKIP [{inst_key}]: No signal generated")
@@ -1919,7 +2242,10 @@ def run_scanner(active_trade: Dict[str, Any], active_instrument: str) -> None:
 
             # Check 0: Economic calendar / News filter
             if ECONOMIC_CALENDAR_AVAILABLE and _economic_calendar:
-                should_pause, pause_event = _economic_calendar.should_pause_trading()
+                enabled_instruments = config.ENABLED_INSTRUMENTS
+                should_pause, pause_event = _economic_calendar.should_pause_trading(
+                    enabled_instruments
+                )
                 if should_pause:
                     assert pause_event is not None
                     logger.info(

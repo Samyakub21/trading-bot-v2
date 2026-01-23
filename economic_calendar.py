@@ -19,7 +19,7 @@ import json
 import logging
 import requests
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 from pathlib import Path
 import threading
 import time
@@ -358,17 +358,39 @@ class EconomicCalendar:
             # Save to cache
             self.save_events_to_cache()
 
-    def should_pause_trading(self) -> Tuple[bool, Optional[EconomicEvent]]:
+    def should_pause_trading(
+        self, instruments: Optional[List[str]] = None
+    ) -> Tuple[bool, Optional[EconomicEvent]]:
         """
         Check if trading should be paused due to any high-impact event.
-        Checks all configured instruments.
+        Only pauses for events that affect the specified instruments.
+
+        Args:
+            instruments: List of instrument keys to check. If None, checks all instruments.
+
+        Returns:
+            Tuple of (should_pause, event_that_caused_pause)
         """
         active_events = self.get_active_events(
             window_minutes=max(PAUSE_BEFORE_EVENT, PAUSE_AFTER_EVENT)
         )
 
-        if active_events:
-            return True, active_events[0]
+        # Filter events to only those affecting the specified instruments
+        relevant_events = []
+        for event in active_events:
+            if instruments:
+                # Check if event affects any of the specified instruments
+                affects_any = any(
+                    event.affects_instrument(inst) for inst in instruments
+                )
+                if affects_any:
+                    relevant_events.append(event)
+            else:
+                # If no instruments specified, include all high-impact events
+                relevant_events.append(event)
+
+        if relevant_events:
+            return True, relevant_events[0]
 
         return False, None
 
@@ -474,25 +496,30 @@ def get_calendar() -> EconomicCalendar:
 # =============================================================================
 
 
-def should_pause_trading(instrument: str) -> Tuple[bool, str]:
+def should_pause_trading(
+    instruments: Optional[Union[str, List[str]]] = None,
+) -> Tuple[bool, str]:
     """
-    Check if trading should be paused for the given instrument.
+    Check if trading should be paused for the given instruments.
 
     Args:
-        instrument: The instrument to check (e.g., "CRUDEOIL")
+        instruments: Single instrument string, list of instruments, or None for all instruments.
 
     Returns:
         Tuple of (should_pause, reason)
     """
     calendar = get_calendar()
 
-    # Get active high-impact events
-    active_events = calendar.get_active_events(
-        instrument=instrument, window_minutes=max(PAUSE_BEFORE_EVENT, PAUSE_AFTER_EVENT)
-    )
+    # Convert single instrument to list
+    if isinstance(instruments, str):
+        instruments = [instruments]
+    elif instruments is None:
+        instruments = None  # Check all instruments
 
-    if active_events:
-        event = active_events[0]  # Get the most relevant event
+    # Get active high-impact events
+    pause, event = calendar.should_pause_trading(instruments)
+
+    if pause and event:
         minutes_until = (event.timestamp - datetime.now()).total_seconds() / 60
 
         if minutes_until > 0:

@@ -582,7 +582,7 @@ class MomentumBreakoutStrategy(Strategy):
 
             # Instrument-specific overrides
             if self.instrument == "NATGASMINI":
-                volume_mult = 1.8
+                pass  # Use param value
             elif self.instrument == "MIDCPNIFTY":
                 volume_mult = 2.0
 

@@ -108,7 +108,10 @@ def load_scrip_master(csv_path: str = SCRIP_MASTER_CSV) -> List[Dict]:
 
 
 def find_current_month_future(
-    underlying: str, exchange: str, contracts: List[Dict]
+    underlying: str,
+    exchange: str,
+    contracts: List[Dict],
+    option_offset_days: int = 0,
 ) -> Optional[Dict]:
     """
     Find the current month's futures contract for an underlying.
@@ -192,7 +195,25 @@ def find_current_month_future(
     # Sort by expiry date (nearest first)
     matching.sort(key=lambda x: x["_expiry_date"])
 
-    # Return the nearest expiry (current month or next available)
+    # If an option offset is provided (e.g., MCX options expire earlier), prefer
+    # futures whose option expiry (future_expiry - option_offset_days) is still
+    # in the future. This avoids selecting a future in the current month whose
+    # options already expired.
+    if option_offset_days and option_offset_days > 0:
+        today = datetime.now().date()
+        valid = []
+        for c in matching:
+            try:
+                opt_expiry = c.get("_expiry_date") - timedelta(days=option_offset_days)
+                if opt_expiry >= today:
+                    valid.append(c)
+            except Exception:
+                continue
+
+        if valid:
+            return valid[0]
+
+    # Fallback: return the nearest expiry (current month or next available)
     return matching[0]
 
 
@@ -296,8 +317,20 @@ def get_updated_instrument_config(
     # Determine exchange
     exchange = current_config.get("exchange_segment_str", "MCX")
 
-    # Find current month future
-    future_contract = find_current_month_future(instrument_key, exchange, contracts)
+    # Determine option offset (MCX options typically expire earlier)
+    try:
+        exchange_norm = str(exchange).upper()
+        if "MCX" in exchange_norm:
+            option_offset_days = 5
+        else:
+            option_offset_days = 0
+    except Exception:
+        option_offset_days = 0
+
+    # Find current month future, preferring a future whose options haven't expired
+    future_contract = find_current_month_future(
+        instrument_key, exchange, contracts, option_offset_days=option_offset_days
+    )
 
     if not future_contract:
         logging.warning(f"Could not find current month future for {instrument_key}")
