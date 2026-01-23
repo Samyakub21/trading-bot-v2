@@ -154,11 +154,8 @@ def start_ltp_heartbeat(interval_seconds: int = 60) -> None:
     thread.start()
     LTP_HEARTBEAT_STARTED = True
 
-
-# Do not start heartbeat at import time to avoid circular import with `socket_handler`.
-# Heartbeat will be started lazily when scanning begins.
-
-
+    # Do not start heartbeat at import time to avoid circular import with `socket_handler`.
+    # Heartbeat will be started lazily when scanning begins.
 
     return _signal_tracker.last_loss_time
 
@@ -733,9 +730,6 @@ def check_margin_available(
 
 
 # (Keeping verify_order, execute_trade_entry, run_scanner as is, but fixing run_scanner typing)
-
-
-
 
 
 # =============================================================================
@@ -1387,10 +1381,12 @@ def scan_all_instruments() -> List[Dict[str, Any]]:
                 if banknifty_config:
                     banknifty_df_15, banknifty_df_60 = get_instrument_data(
                         future_id=str(banknifty_config.get("future_id", "")),
-                        exchange_segment_str=str(banknifty_config.get(
-                            "exchange_segment_str", ""
-                        )),
-                        instrument_type=str(banknifty_config.get("instrument_type", "")),
+                        exchange_segment_str=str(
+                            banknifty_config.get("exchange_segment_str", "")
+                        ),
+                        instrument_type=str(
+                            banknifty_config.get("instrument_type", "")
+                        ),
                     )
                     if banknifty_df_60 is not None:
                         kwargs["banknifty_df_60"] = banknifty_df_60
@@ -1601,9 +1597,6 @@ def get_atm_option(
     except Exception as e:
         logger.error(f"Error in get_atm_option: {e}")
         return None
-
-
-
 
 
 # =============================================================================
